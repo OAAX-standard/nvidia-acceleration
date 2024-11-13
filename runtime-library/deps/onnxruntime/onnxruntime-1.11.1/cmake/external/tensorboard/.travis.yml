@@ -1,0 +1,121 @@
+dist: trusty
+language: python
+python:
+  - "2.7"
+  - "3.6"
+
+branches:
+  only:
+    - master
+    - /^\d+\.\d+(\.\d+)?(-\S*)?$/
+
+env:
+  # Keep this Bazel version in sync with the `versions.check` directive
+  # near the top of our WORKSPACE file.
+  #
+  # Grab the BAZEL_SHA256SUM from the Bazel releases page; e.g.:
+  # bazel-0.20.0-linux-x86_64.sha256
+  global:
+    - BAZEL=0.22.0
+    - BAZEL_SHA256SUM=8474ed28ed4998e2f5671ddf3a9a80ae9e484a5de3b8b70c8b654c017c65d363
+  matrix:
+    - TF_VERSION_ID=tf-nightly
+    - TF_VERSION_ID=tf-nightly-2.0-preview
+    - TF_VERSION_ID=  # Do not install TensorFlow in this case
+
+cache:
+  # Reuse the pip cache directory across build machines.
+  pip: true
+  # Cache directories for Bazel. See ci/bazelrc for details.
+  directories:
+    - $HOME/.cache/tb-bazel-repo
+    - $HOME/.cache/tb-bazel-disk
+
+# Each bullet point is displayed in the Travis log as one collapsed line, which
+# indicates how long it took. Travis will check the return code at the end. We
+# can't use `set -e` in the YAML file since it might impact Travis internals.
+# If inline scripts get too long, Travis surprisingly prints them twice.
+
+before_install:
+  - elapsed() { TZ=UTC printf "Time %(%T)T %s\n" "$SECONDS" "$1"; }
+  - elapsed "before_install"
+  - ci/download_bazel.sh "${BAZEL}" "${BAZEL_SHA256SUM}" ~/bazel
+  - sudo mv ~/bazel /usr/local/bin/bazel
+  - cp ci/bazelrc ~/.bazelrc
+  - elapsed "before_install (done)"
+
+install:
+  - elapsed "install"
+  # Lint check deps.
+  - pip install flake8==3.5.0
+  - pip install yamllint==1.5.0
+  # TensorBoard deps.
+  - pip install futures==3.1.1
+  - pip install grpcio==1.6.3
+  # Uninstall older Travis numpy to avoid upgrade-in-place issues.
+  - pip uninstall -y numpy
+  - |
+    # Install TensorFlow if requested
+    if [ -n "${TF_VERSION_ID}" ]; then
+      pip install -I "${TF_VERSION_ID}"
+    else
+      # Requirements typically found through TensorFlow.
+      pip install "absl-py>=0.7.0" \
+      && pip install "numpy<2.0,>=1.14.5"
+    fi
+  # Deps for gfile S3 test.
+  - pip install boto3==1.9.86
+  - pip install moto==1.3.7
+  # Workaround for https://github.com/travis-ci/travis-ci/issues/7940
+  - sudo rm -f /etc/boto.cfg
+  - elapsed "install (done)"
+
+before_script:
+  - elapsed "before_script"
+  # Do a fail-fast check for Python syntax errors or undefined names.
+  # Use the comment '# noqa: <error code>' to suppress.
+  - flake8 . --count --select=E901,E999,F821,F822,F823 --show-source --statistics
+  # Lint .yaml docs files. Use '# yamllint disable-line rule:foo' to suppress.
+  - yamllint -c docs/.yamllint docs docs/.yamllint
+  # Make sure that IPython notebooks have valid Markdown.
+  - tensorboard/tools/docs_list_format_test.sh
+  # Make sure we aren't accidentally including work-in-progress code.
+  - tensorboard/tools/do_not_submit_test.sh
+  # Make sure all necessary files have the license information.
+  - tensorboard/tools/license_test.sh
+  # Make sure that build URLs are valid.
+  - tensorboard/tools/mirror_urls_test.sh
+  # Make sure that files have no trailing whitespace.
+  - tensorboard/tools/whitespace_hygiene_test.py
+  - |
+    # Specify subset of tests to run depending on TF installation config.
+    # We condition the value of --test_tag_filters so that we can run the
+    # bazel test command unconditionally which produces nicer log output.
+    if [ -z "${TF_VERSION_ID}" ]; then
+      test_tag_filters=support_notf
+    else
+      test_tag_filters=
+    fi
+  - elapsed "before_script (done)"
+
+# Commands in this section should only fail if it's our fault. Travis will
+# categorize them as 'failed', rather than 'error' for other sections.
+script:
+  - elapsed "script"
+  # Note: bazel test implies fetch+build, but this gives us timing.
+  - elapsed && bazel fetch //tensorboard/...
+  - elapsed && bazel build //tensorboard/...
+  - elapsed && bazel test //tensorboard/... --test_tag_filters="${test_tag_filters}"
+  - elapsed && bazel run //tensorboard/pip_package:test_pip_package -- --default-python-only --tf-version "${TF_VERSION_ID}"
+  # Run manual S3 test
+  - elapsed && bazel test //tensorboard/compat/tensorflow_stub:gfile_s3_test
+  - elapsed && bazel test //tensorboard/summary/writer:event_file_writer_s3_test
+  - elapsed "script (done)"
+
+after_script:
+  # Bazel launches daemons unless --batch is used.
+  - elapsed "after_script"
+  - bazel shutdown
+
+notifications:
+  email: false
