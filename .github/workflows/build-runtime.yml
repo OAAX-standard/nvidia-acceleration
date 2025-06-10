@@ -16,6 +16,7 @@ jobs:
     steps:
       - name: Set up Docker Image
         run: |
+          export DEBIAN_FRONTEND=noninteractive
           apt-get update
           apt-get install -y git git-lfs
           git lfs install
@@ -29,6 +30,7 @@ jobs:
 
       - name: Install s3cmd
         run: |
+          export DEBIAN_FRONTEND=noninteractive
           apt-get update
           apt-get install -y s3cmd
 
