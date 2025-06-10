@@ -10,7 +10,7 @@ jobs:
     timeout-minutes: 10  # Set a timeout of 10 minutes for the job
     runs-on: self-hosted
     container:
-      image: ubuntu:20.04  # or any other image
+      image: ubuntu:22.04  # or any other image
       options: --volume /var/run/docker.sock:/var/run/docker.sock
 
     steps:
