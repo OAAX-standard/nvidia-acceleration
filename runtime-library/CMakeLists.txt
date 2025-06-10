@@ -37,11 +37,6 @@ else()
         message(FATAL_ERROR "Please specify the target platform: X86_64 or AARCH64")
 endif()
 
-# for aarch64 cuda version 10, set ONNXRUNTIME_API_VERSION=11
-if(PLATFORM STREQUAL "AARCH64" AND CUDA_VERSION STREQUAL "10")
-        add_definitions(-DONNXRUNTIME_API_VERSION=11)
-endif()
-
 set(CUDA_BIN_FOLDER_NAME "${GENERIC_BUILD_TARGET}_CUDA_${CUDA_VERSION}")
 set(CMAKE_C_COMPILER ${CROSS_ROOT}/bin/${COMPILER_PREFIX}gcc)
 set(CMAKE_CXX_COMPILER ${CROSS_ROOT}/bin/${COMPILER_PREFIX}g++)
@@ -236,9 +231,3 @@ add_custom_command(TARGET RuntimeLibrary POST_BUILD
 add_custom_command(TARGET RuntimeLibrary POST_BUILD
         COMMAND cp ${CUDA_DIR}/${GENERIC_BUILD_TARGET}/cuda_${CUDA_VERSION}/libcudnn* ${CMAKE_CURRENT_BINARY_DIR}/
 )
-# Copy libm.so for CUDA 10
-if(PLATFORM STREQUAL "AARCH64" AND CUDA_VERSION STREQUAL "10")
-        add_custom_command(TARGET RuntimeLibrary POST_BUILD
-        COMMAND cp ${CUDA_DIR}/${GENERIC_BUILD_TARGET}/cuda_${CUDA_VERSION}/libm.so.6 ${CMAKE_CURRENT_BINARY_DIR}/
-        )
-endif()

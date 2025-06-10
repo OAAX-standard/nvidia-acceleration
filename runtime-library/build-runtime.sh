@@ -2,12 +2,45 @@ set -e
 
 cd "$(dirname "$0")" || exit 1
 
-rm -rf build 2&> /dev/null || true
-mkdir build
+BUILD_DIR="$(pwd)/build"
+ARTIFACTS_DIR="$(pwd)/artifacts"
+mkdir -p $BUILD_DIR
+rm -rf $ARTIFACTS_DIR
+mkdir -p $ARTIFACTS_DIR
 
-cd build
+# Accept platform and CUDA version as arguments or set defaults
+ALL=0
+if [ $# -lt 2 ]; then
+    ALL=1
+else
+    PLATFORM=$1
+    CUDA_VERSION=$2
+fi
+cd "$BUILD_DIR"
 
-PLATFORM=X86_64 # or AAARCH64
-CUDA_VERSION=12 # or 10 or 11
-cmake .. -DPLATFORM=$PLATFORM -DCUDA_VERSION=$CUDA_VERSION
-make -j
+function build_runtime {
+    platform=$1
+    cuda_version=$2
+    echo "Building runtime for platform: $platform with CUDA version: $cuda_version"
+    rm -rf *
+    cmake .. -DPLATFORM=$platform -DCUDA_VERSION=$cuda_version
+    make -j
+    mkdir -p "${ARTIFACTS_DIR}/$platform/"
+    cp ./*.so "${ARTIFACTS_DIR}/$platform/"
+    # Bundle the shared libraries into a tarball
+    tar czf "${ARTIFACTS_DIR}/runtime-library-${platform}-cuda_${cuda_version}.tar.gz" -C "${ARTIFACTS_DIR}/$platform" ./*.so
+    echo "Shared libraries for $platform have been copied to ${ARTIFACTS_DIR}/$platform/"
+}
+
+if [[ "$PLATFORM" == "X86_64" && "$CUDA_VERSION" == "11" || "$ALL" == "1" ]]; then
+    build_runtime "X86_64" "11"
+fi
+if [[ "$PLATFORM" == "X86_64" && "$CUDA_VERSION" == "12" || "$ALL" == "1" ]]; then
+    build_runtime "X86_64" "12"
+fi
+if [[ "$PLATFORM" == "AARCH64" && "$CUDA_VERSION" == "11" || "$ALL" == "1" ]]; then
+    build_runtime "AARCH64" "11"
+fi
+if [[ "$PLATFORM" == "AARCH64" && "$CUDA_VERSION" == "12" || "$ALL" == "1" ]]; then
+    build_runtime "AARCH64" "12"
+fi
