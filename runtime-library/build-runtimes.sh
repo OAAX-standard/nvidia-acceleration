@@ -17,20 +17,25 @@ else
     PLATFORM=$1
     CUDA_VERSION=$2
 fi
-cd "$BUILD_DIR"
 
 function build_runtime {
     platform=$1
     cuda_version=$2
+
+    # Go to the build directory
+    cd "$BUILD_DIR"
+
     echo "Building runtime for platform: $platform with CUDA version: $cuda_version"
     rm -rf *
     cmake .. -DPLATFORM=$platform -DCUDA_VERSION=$cuda_version
     make -j
+
     mkdir -p "${ARTIFACTS_DIR}/$platform/$cuda_version"
     cp ./bin/* "${ARTIFACTS_DIR}/$platform/$cuda_version/"
     # Bundle the shared libraries into a tarball
     cd "${ARTIFACTS_DIR}/$platform/$cuda_version/"
-    tar czf "../../runtime-library-${platform}-cuda_${cuda_version}.tar.gz"  ./*
+    tar czf "../../runtime-library-${platform}-cuda_${cuda_version}.tar.gz" ./*
+
     echo "Shared libraries for $platform have been copied to ${ARTIFACTS_DIR}/$platform/$cuda_version/"
 }
 
