@@ -4,6 +4,7 @@ cd "$(dirname "$0")" || exit 1
 
 BUILD_DIR="$(pwd)/build"
 ARTIFACTS_DIR="$(pwd)/artifacts"
+rm -rf $BUILD_DIR
 mkdir -p $BUILD_DIR
 rm -rf $ARTIFACTS_DIR
 mkdir -p $ARTIFACTS_DIR
@@ -25,11 +26,12 @@ function build_runtime {
     rm -rf *
     cmake .. -DPLATFORM=$platform -DCUDA_VERSION=$cuda_version
     make -j
-    mkdir -p "${ARTIFACTS_DIR}/$platform/"
-    cp ./*.so "${ARTIFACTS_DIR}/$platform/"
+    mkdir -p "${ARTIFACTS_DIR}/$platform/$cuda_version"
+    cp ./bin/* "${ARTIFACTS_DIR}/$platform/$cuda_version/"
     # Bundle the shared libraries into a tarball
-    tar czf "${ARTIFACTS_DIR}/runtime-library-${platform}-cuda_${cuda_version}.tar.gz" -C "${ARTIFACTS_DIR}/$platform" ./*.so
-    echo "Shared libraries for $platform have been copied to ${ARTIFACTS_DIR}/$platform/"
+    cd "${ARTIFACTS_DIR}/$platform/$cuda_version/"
+    tar czf "../../runtime-library-${platform}-cuda_${cuda_version}.tar.gz"  ./*
+    echo "Shared libraries for $platform have been copied to ${ARTIFACTS_DIR}/$platform/$cuda_version/"
 }
 
 if [[ "$PLATFORM" == "X86_64" && "$CUDA_VERSION" == "11" || "$ALL" == "1" ]]; then
