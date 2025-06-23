@@ -7,11 +7,14 @@ setlocal enabledelayedexpansion
 REM Change working directory to the directory of this script (handles drives too)
 cd /d %~dp0
 
+REM Get current directory and store it in a variable
+set "CURRENT_DIR=%cd%"
+
 REM Set BUILD_DIR variable to a 'build' subdirectory in the current directory
-set "BUILD_DIR=%cd%\build"
+set "BUILD_DIR=%CURRENT_DIR%\build"
 
 REM Set ARTIFACTS_DIR variable to an 'artifacts' subdirectory in the current directory
-set "ARTIFACTS_DIR=%cd%\artifacts"
+set "ARTIFACTS_DIR=%CURRENT_DIR%\artifacts"
 
 REM Remove the artifacts directory and all its contents if it exists
 if exist "%ARTIFACTS_DIR%" rmdir /s /q "%ARTIFACTS_DIR%"
@@ -22,11 +25,17 @@ mkdir "%ARTIFACTS_DIR%"
 REM Call the function with the desired CUDA version
 call :build_runtime 11
 call :build_runtime 12
+REM End local environment changes
+endlocal
+goto :eof
 
 REM Define the build_runtime function
 :build_runtime
 REM %1 is the cuda_version passed to the function
 set "cuda_version=%~1"
+
+REM Return to current directory
+cd /d "%CURRENT_DIR%"
 
 REM Create the build directory if it does not exist
 if exist "%BUILD_DIR%" rmdir /s /q "%BUILD_DIR%"
@@ -79,8 +88,3 @@ echo Shared libraries for Windows have been copied to "%ARTIFACTS_DIR%\Windows\c
 REM Restore previous directory from the stack
 popd
 
-REM End function
-goto :eof
-
-REM End local environment changes
-endlocal
