@@ -13,20 +13,24 @@ set "BUILD_DIR=%cd%\build"
 REM Set ARTIFACTS_DIR variable to an 'artifacts' subdirectory in the current directory
 set "ARTIFACTS_DIR=%cd%\artifacts"
 
-REM Create the build directory if it does not exist
-if exist "%BUILD_DIR%" rmdir /s /q "%BUILD_DIR%"
-mkdir "%BUILD_DIR%"
-
 REM Remove the artifacts directory and all its contents if it exists
 if exist "%ARTIFACTS_DIR%" rmdir /s /q "%ARTIFACTS_DIR%"
 
 REM Create a new, empty artifacts directory
 mkdir "%ARTIFACTS_DIR%"
 
+REM Call the function with the desired CUDA version
+call :build_runtime 11
+call :build_runtime 12
+
 REM Define the build_runtime function
 :build_runtime
 REM %1 is the cuda_version passed to the function
 set "cuda_version=%~1"
+
+REM Create the build directory if it does not exist
+if exist "%BUILD_DIR%" rmdir /s /q "%BUILD_DIR%"
+mkdir "%BUILD_DIR%"
 
 echo Building runtime libraries for CUDA version %cuda_version%...
 
@@ -77,9 +81,6 @@ popd
 
 REM End function
 goto :eof
-
-REM Call the function with the desired CUDA version
-call :build_runtime 11
 
 REM End local environment changes
 endlocal
