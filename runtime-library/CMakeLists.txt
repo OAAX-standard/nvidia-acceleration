@@ -17,7 +17,6 @@ set(RE2_DIR "${DEPS_DIR}/re2")
 set(ONNX_RUNTIME_DIR "${DEPS_DIR}/onnxruntime")
 set(CUDA_DIR "${DEPS_DIR}/cuda")
 
-
 # === Platform Selection and Toolchain Setup ===
 # Select platform and set cross-compilation toolchain variables
 if(WIN32)
@@ -35,6 +34,7 @@ if(PLATFORM STREQUAL "X86_64")
         set(CROSS_ROOT "/opt/x86_64-unknown-linux-gnu-gcc-9.5.0")
         set(COMPILER_PREFIX "x86_64-unknown-linux-gnu-")
         set(SYSROOT "/opt/x86_64-unknown-linux-gnu-gcc-9.5.0/x86_64-unknown-linux-gnu/sysroot")
+
         # -fno-math-errno: Avoid setting errno after math functions (improves performance).
         # -fopenmp: Enable OpenMP for parallel programming.
         # -std=c99: Use the C99 standard for C code.
@@ -42,21 +42,25 @@ if(PLATFORM STREQUAL "X86_64")
         set(CMAKE_BUILD_FLAGS "-fno-math-errno -fopenmp -march=haswell")
 elseif(PLATFORM STREQUAL "AARCH64")
         set(GENERIC_BUILD_TARGET AARCH64)
+
         # Uncomment below to use a different toolchain version
         if(CUDA_VERSION STREQUAL "12")
                 set(CROSS_ROOT "/opt/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu")
         else()
                 set(CROSS_ROOT "/opt/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu")
         endif()
+
         set(COMPILER_PREFIX "aarch64-none-linux-gnu-")
         set(ADDITIONAL_LIBS "clog")
 elseif(PLATFORM STREQUAL "WINDOWS")
         set(GENERIC_BUILD_TARGET X86_64_WINDOWS)
         set(CMAKE_SYSTEM_NAME Windows)
+
         # Use default MSVC toolchain, do not set cross-compilation variables
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W3 /MD /D_CRT_SECURE_NO_WARNINGS")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W3 /MD /D_CRT_SECURE_NO_WARNINGS")
-        # Do not add compiler flags to CMAKE_BUILD_FLAGS to avoid linker warnings
+
+# Do not add compiler flags to CMAKE_BUILD_FLAGS to avoid linker warnings
 else()
         message(FATAL_ERROR "Please specify the target platform: X86_64, AARCH64, or WINDOWS. Found ${PLATFORM}")
 endif()
@@ -64,6 +68,8 @@ endif()
 # Print toolchain and sysroot info for debugging
 message(STATUS "SDKTARGETSYSROOT=${SDKTARGETSYSROOT}")
 message(STATUS "CROSS_ROOT=${CROSS_ROOT}")
+message(STATUS "GENERIC_BUILD_TARGET=${GENERIC_BUILD_TARGET}")
+message(STATUS "CUDA_VERSION=${CUDA_VERSION}")
 
 # Set cuda bin folder name based on the generic build target and CUDA version
 set(CUDA_BIN_FOLDER_NAME "${GENERIC_BUILD_TARGET}_CUDA_${CUDA_VERSION}")
@@ -81,12 +87,16 @@ set(CMAKE_C_COMPILER ${CROSS_ROOT}/bin/${COMPILER_PREFIX}gcc)
 set(CMAKE_CXX_COMPILER ${CROSS_ROOT}/bin/${COMPILER_PREFIX}g++)
 set(CMAKE_ASM_COMPILER ${CROSS_ROOT}/bin/${COMPILER_PREFIX}gcc)
 set(CMAKE_NM ${CROSS_ROOT}/bin/${COMPILER_PREFIX}NM)
+
 # Do not use the root path when searching for programs (executables)
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+
 # Only search the root path when searching for libraries
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+
 # Only search the root path when searching for header files
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+
 # Only search the root path when searching for packages (e.g., via find_package)
 set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 
@@ -120,7 +130,8 @@ file(GLOB_RECURSE SRC
         ${SRC_DIR}/runtime_utils.c
         ${SRC_DIR}/runtime_core.c
 )
-######################## main bin build settings #######################################################################
+
+# ####################### main bin build settings #######################################################################
 
 # === Library Target ===
 # Create the shared library target for the runtime
@@ -170,6 +181,7 @@ target_include_directories(RuntimeLibrary PUBLIC
         ${ONNX_RUNTIME_DIR}/${CUDA_BIN_FOLDER_NAME}/include
         ${ONNX_RUNTIME_DIR}/${CUDA_BIN_FOLDER_NAME}/include/onnxruntime/core/session
 )
+
 if(NOT WIN32)
         target_include_directories(RuntimeLibrary PUBLIC
                 ${RE2_DIR}/include
@@ -185,6 +197,7 @@ if(NOT WIN32)
                 "${CPUINFO_DIR}/${GENERIC_BUILD_TARGET}"
         )
 endif()
+
 target_link_directories(RuntimeLibrary PUBLIC
         "${ONNX_RUNTIME_DIR}/${CUDA_BIN_FOLDER_NAME}"
 )
@@ -200,103 +213,25 @@ if(MSVC)
                 absl_bad_any_cast_impl
                 absl_bad_optional_access
                 absl_bad_variant_access
-                absl_base
-                absl_city
-                absl_civil_time
-                absl_cord
-                absl_cordz_functions
-                absl_cordz_handle
-                absl_cordz_info
-                absl_cord_internal
-                absl_crc32c
-                absl_crc_cord_state
-                absl_crc_cpu_detect
-                absl_crc_internal
-                absl_debugging_internal
-                absl_decode_rust_punycode
-                absl_demangle_internal
-                absl_demangle_rust
-                absl_examine_stack
-                absl_exponential_biased
-                absl_failure_signal_handler
-                absl_flags_commandlineflag
-                absl_flags_commandlineflag_internal
-                absl_flags_config
-                absl_flags_internal
-                absl_flags_marshalling
-                absl_flags_parse
-                absl_flags_private_handle_accessor
-                absl_flags_program_name
-                absl_flags_reflection
-                absl_flags_usage
-                absl_flags_usage_internal
-                absl_graphcycles_internal
-                absl_hash
-                absl_hashtablez_sampler
-                absl_int128
-                absl_kernel_timeout_internal
-                absl_log_entry
-                absl_log_globals
-                absl_log_internal_check_op
-                absl_log_internal_conditions
-                absl_log_internal_fnmatch
-                absl_log_internal_format
-                absl_log_internal_globals
-                absl_log_internal_log_sink_set
-                absl_log_internal_message
-                absl_log_internal_nullguard
-                absl_log_internal_proto
-                absl_log_severity
-                absl_log_sink
-                absl_low_level_hash
-                absl_malloc_internal
-                absl_raw_hash_set
-                absl_raw_logging_internal
-                absl_spinlock_wait
-                absl_stacktrace
-                absl_strerror
-                absl_strings
-                absl_strings_internal
-                absl_string_view
-                absl_str_format_internal
-                absl_symbolize
-                absl_synchronization
-                absl_throw_delegate
-                absl_time
-                absl_time_zone
-                absl_utf8_for_code_point
-                absl_vlog_config_internal
-                custom_op_get_const_input_test_library
-                custom_op_invalid_library
-                custom_op_library
-                custom_op_local_function
-                flatbuffers
-                gmock
-                gtest
-                libprotobuf-lite
-                libprotobuf
-                libprotoc
-                onnx
-                onnxruntime_common
-                onnxruntime_flatbuffers
-                onnxruntime_framework
-                onnxruntime_graph
-                onnxruntime_lora
-                onnxruntime_mlas
-                onnxruntime_optimizer
-                onnxruntime_providers
-                onnxruntime_providers_shared
-                onnxruntime_session
-                onnxruntime_test_utils
-                onnxruntime_util
-                onnx_proto
-                onnx_test_data_proto
-                onnx_test_runner_common
-                test_execution_provider
-                win_getopt_wide
+                absl_base absl_city
+                absl_civil_time absl_cord_internal absl_cord absl_cordz_functions absl_cordz_handle absl_cordz_info absl_crc_cord_state absl_crc_cpu_detect absl_crc_internal absl_crc32c absl_debugging_internal absl_decode_rust_punycode absl_demangle_internal absl_demangle_rust absl_examine_stack absl_exponential_biased absl_failure_signal_handler absl_flags_commandlineflag_internal absl_flags_commandlineflag absl_flags_config absl_flags_internal absl_flags_marshalling absl_flags_parse absl_flags_private_handle_accessor absl_flags_program_name absl_flags_reflection absl_flags_usage_internal absl_flags_usage absl_graphcycles_internal absl_hash absl_hashtablez_sampler absl_int128 absl_kernel_timeout_internal absl_log_entry absl_log_globals absl_log_internal_check_op absl_log_internal_conditions absl_log_internal_fnmatch absl_log_internal_format absl_log_internal_globals absl_log_internal_log_sink_set absl_log_internal_message absl_log_internal_nullguard absl_log_internal_proto absl_log_severity absl_log_sink absl_low_level_hash absl_malloc_internal absl_raw_hash_set absl_raw_logging_internal absl_spinlock_wait absl_stacktrace absl_str_format_internal absl_strerror absl_string_view absl_strings_internal absl_strings absl_symbolize absl_synchronization absl_throw_delegate absl_time_zone absl_time absl_utf8_for_code_point absl_vlog_config_internal CompilerIdCUDA cpuinfo custom_op_get_const_input_test_library custom_op_invalid_library custom_op_library custom_op_local_function flatbuffers gmock gtest libprotobuf-lite libprotobuf libprotoc onnx_proto onnx_test_data_proto onnx_test_runner_common onnx onnxruntime_common onnxruntime_flatbuffers onnxruntime_framework onnxruntime_graph onnxruntime_lora onnxruntime_mlas onnxruntime_mocked_allocator onnxruntime_optimizer onnxruntime_providers_cuda onnxruntime_providers_shared onnxruntime_providers onnxruntime_session onnxruntime_test_utils onnxruntime_util onnxruntime re2 test_execution_provider win_getopt_wide
 
                 cpuinfo re2 c_utilities
                 ws2_32 bcrypt
+        )
+
+        # copy shared libraries to binary directory
+        file(GLOB ONNXRUNTIME_DLLS "${ONNX_RUNTIME_DIR}/${CUDA_BIN_FOLDER_NAME}/*.dll")
+        add_custom_command(TARGET RuntimeLibrary POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${ONNXRUNTIME_DLLS}
+                "$<TARGET_FILE_DIR:RuntimeLibrary>/"
+        )
+        file(GLOB CUDA_DLLS "${CUDA_DIR}/${GENERIC_BUILD_TARGET}/cuda_${CUDA_VERSION}/*")
+        add_custom_command(TARGET RuntimeLibrary POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${CUDA_DLLS}
+                "$<TARGET_FILE_DIR:RuntimeLibrary>/"
         )
 else()
         target_link_libraries(RuntimeLibrary PUBLIC
@@ -348,7 +283,7 @@ else()
                 ${ADDITIONAL_LIBS}
 
                 c_utilities
-                
+
                 stdc++
                 -Wl,--end-group
         )
@@ -363,7 +298,7 @@ endif()
 
 # Set custom output directories for the built target
 set_target_properties(RuntimeLibrary PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
 )
