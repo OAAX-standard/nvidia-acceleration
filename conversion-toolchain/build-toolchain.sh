@@ -14,7 +14,7 @@ rm -rf artifacts 2&> /dev/null || true
 mkdir artifacts
 
 # Build the toolchain as a Docker image
-docker build -t oaax-cuda-toolchain:$VERSION .
+docker build -t oaax-nvidia-toolchain:$VERSION .
 
 # Save the Docker image as a tarball
-docker save oaax-cuda-toolchain:$VERSION -o ./artifacts/oaax-cuda-toolchain.tar
+docker save oaax-nvidia-toolchain:$VERSION -o ./artifacts/oaax-nvidia-toolchain.tar
