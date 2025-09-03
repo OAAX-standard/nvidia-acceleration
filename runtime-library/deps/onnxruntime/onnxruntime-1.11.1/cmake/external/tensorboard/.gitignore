@@ -1,6 +1,0 @@
-/bazel-*
-/.idea
-.DS_Store
-*.pyc
-*.egg-info/
-*.swp

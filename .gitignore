@@ -12,3 +12,4 @@ _deps
 CMakeUserPresets.json
 build
 .DS_Store
+artifacts

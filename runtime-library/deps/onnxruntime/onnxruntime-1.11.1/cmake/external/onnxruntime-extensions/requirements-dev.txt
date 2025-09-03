@@ -1,3 +1,0 @@
-pytest
-transformers
-tensorflow_text
