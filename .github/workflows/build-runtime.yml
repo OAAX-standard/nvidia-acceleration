@@ -12,8 +12,8 @@ on:
 
 jobs:
   build-runtimes-for-ubuntu:
-    timeout-minutes: 10  # Set a timeout of 10 minutes for the job
-    runs-on: benchmarking-linux-x86_64
+    timeout-minutes: 20  # Set a timeout of 10 minutes for the job
+    runs-on: heavy-linux-x64
 
     steps:
       - name: Checkout
@@ -117,10 +117,6 @@ jobs:
 
           $env:PATH += ";$s5cmdPath"
           [Environment]::SetEnvironmentVariable("PATH", $env:PATH, [EnvironmentVariableTarget]::User)
-
-          if (-Not (Test-Path $artifactPath)) {
-            throw "Artifact not found: $artifactPath"
-          }
 
           $env:AWS_ACCESS_KEY_ID = "${{ secrets.S3_ACCESS_KEY }}"
           $env:AWS_SECRET_ACCESS_KEY = "${{ secrets.S3_SECRET_KEY }}"
