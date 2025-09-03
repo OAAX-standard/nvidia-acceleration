@@ -13,7 +13,7 @@ on:
 jobs:
   build-runtimes-for-ubuntu:
     timeout-minutes: 10  # Set a timeout of 10 minutes for the job
-    runs-on: ubuntu-22.04
+    runs-on: benchmarking-linux-x86_64
 
     steps:
       - name: Checkout
