@@ -1,7 +1,5 @@
 cmake_minimum_required(VERSION 3.10.2)
 
-project(RuntimeLibrary)
-
 # Enable verbose makefile output (set to OFF for less output)
 set(CMAKE_VERBOSE_MAKEFILE OFF)
 
@@ -10,12 +8,19 @@ set(CMAKE_VERBOSE_MAKEFILE OFF)
 set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set(DEPS_DIR ${CMAKE_CURRENT_LIST_DIR}/deps)
+set(SPDLOG_DIR ${DEPS_DIR}/spdlog)
+set(CONCURRENT_QUEUE_DIR ${DEPS_DIR}/concurrentqueue)
 set(TOOLS_C_UTILITIES_DIR ${DEPS_DIR}/tools/c-utilities)
 set(TOOLS_C_UTILITIES_INCLUDE_DIR ${DEPS_DIR}/tools/c-utilities/include)
 set(CPUINFO_DIR "${DEPS_DIR}/cpuinfo")
 set(RE2_DIR "${DEPS_DIR}/re2")
 set(ONNX_RUNTIME_DIR "${DEPS_DIR}/onnxruntime")
 set(CUDA_DIR "${DEPS_DIR}/cuda")
+set(WINDOWS_RUNTIME_DIR "${DEPS_DIR}/windows-runtime")
+
+# === Compile spdlog ===
+# Enable position-independent code for shared library compatibility
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # === Platform Selection and Toolchain Setup ===
 # Select platform and set cross-compilation toolchain variables
@@ -29,8 +34,21 @@ endif()
 
 set(CUDA_VERSION "11" CACHE STRING "CUDA version")
 
+# === Runtime Version ===
+# Request the runtime version from the user
+if(NOT DEFINED RUNTIME_VERSION)
+        message(FATAL_ERROR "Please specify the runtime version: -DRUNTIME_VERSION=<version>")
+endif()
+
+# Set version as macro definition
+add_definitions(-DRUNTIME_VERSION="${RUNTIME_VERSION}")
+
+message(STATUS "Runtime version: ${RUNTIME_VERSION}")
+
 if(PLATFORM STREQUAL "X86_64")
         set(GENERIC_BUILD_TARGET X86_64)
+        set(CMAKE_SYSTEM_PROCESSOR x86_64)
+        set(CMAKE_SYSTEM_NAME Linux)
         set(CROSS_ROOT "/opt/x86_64-unknown-linux-gnu-gcc-9.5.0")
         set(COMPILER_PREFIX "x86_64-unknown-linux-gnu-")
         set(SYSROOT "/opt/x86_64-unknown-linux-gnu-gcc-9.5.0/x86_64-unknown-linux-gnu/sysroot")
@@ -42,6 +60,8 @@ if(PLATFORM STREQUAL "X86_64")
         set(CMAKE_BUILD_FLAGS "-fno-math-errno -fopenmp -march=haswell")
 elseif(PLATFORM STREQUAL "AARCH64")
         set(GENERIC_BUILD_TARGET AARCH64)
+        set(CMAKE_SYSTEM_PROCESSOR arm)
+        set(CMAKE_SYSTEM_NAME Linux)
 
         # Uncomment below to use a different toolchain version
         if(CUDA_VERSION STREQUAL "12")
@@ -54,6 +74,7 @@ elseif(PLATFORM STREQUAL "AARCH64")
         set(ADDITIONAL_LIBS "clog")
 elseif(PLATFORM STREQUAL "WINDOWS")
         set(GENERIC_BUILD_TARGET X86_64_WINDOWS)
+        set(CMAKE_SYSTEM_PROCESSOR x86_64)
         set(CMAKE_SYSTEM_NAME Windows)
 
         # Use default MSVC toolchain, do not set cross-compilation variables
@@ -78,15 +99,16 @@ set(CUDA_BIN_FOLDER_NAME "${GENERIC_BUILD_TARGET}_CUDA_${CUDA_VERSION}")
 set(CMAKE_FIND_ROOT_PATH ${SDKTARGETSYSROOT})
 
 # Set CMake toolchain variables for cross-compilation
-set(CMAKE_SYSTEM_NAME Linux)
-set(CMAKE_AR ${CROSS_ROOT}/bin/${COMPILER_PREFIX}ar)
-set(CMAKE_AS ${CROSS_ROOT}/bin/${COMPILER_PREFIX}as)
-set(CMAKE_LD ${CROSS_ROOT}/bin/${COMPILER_PREFIX}ld)
-set(CMAKE_RANLIB ${CROSS_ROOT}/bin/${COMPILER_PREFIX}ranlib)
-set(CMAKE_C_COMPILER ${CROSS_ROOT}/bin/${COMPILER_PREFIX}gcc)
-set(CMAKE_CXX_COMPILER ${CROSS_ROOT}/bin/${COMPILER_PREFIX}g++)
-set(CMAKE_ASM_COMPILER ${CROSS_ROOT}/bin/${COMPILER_PREFIX}gcc)
-set(CMAKE_NM ${CROSS_ROOT}/bin/${COMPILER_PREFIX}NM)
+if(NOT WIN32)
+        set(CMAKE_AR ${CROSS_ROOT}/bin/${COMPILER_PREFIX}ar)
+        set(CMAKE_AS ${CROSS_ROOT}/bin/${COMPILER_PREFIX}as)
+        set(CMAKE_LD ${CROSS_ROOT}/bin/${COMPILER_PREFIX}ld)
+        set(CMAKE_RANLIB ${CROSS_ROOT}/bin/${COMPILER_PREFIX}ranlib)
+        set(CMAKE_C_COMPILER ${CROSS_ROOT}/bin/${COMPILER_PREFIX}gcc)
+        set(CMAKE_CXX_COMPILER ${CROSS_ROOT}/bin/${COMPILER_PREFIX}g++)
+        set(CMAKE_ASM_COMPILER ${CROSS_ROOT}/bin/${COMPILER_PREFIX}gcc)
+        set(CMAKE_NM ${CROSS_ROOT}/bin/${COMPILER_PREFIX}NM)
+endif()
 
 # Do not use the root path when searching for programs (executables)
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
@@ -104,15 +126,17 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 set(CMAKE_SHARED_LIBRARY_LINK_C_FLAGS " ")
 set(CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS " ")
 
+project(RuntimeLibrary)
+
 # Add common warning and optimization flags for C and C++
 if(NOT MSVC)
-        set(CMAKE_BUILD_FLAGS "${CMAKE_BUILD_FLAGS} -std=c99 -fno-common -Wall -Wextra -Wformat -Wformat-security")
+        set(CMAKE_BUILD_FLAGS "${CMAKE_BUILD_FLAGS} -fno-common -Wall -Wextra -Wformat -Wformat-security")
         set(CMAKE_BUILD_FLAGS "${CMAKE_BUILD_FLAGS} -Wno-missing-field-initializers -Wno-attribute-warning")
         set(CMAKE_BUILD_FLAGS "${CMAKE_BUILD_FLAGS} -fdata-sections -ffunction-sections -Wl,--gc-sections -fno-exceptions")
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wformat -Wformat-security -fdata-sections -ffunction-sections -Wl,--gc-sections")
         set(CMAKE_C_FLAGS " ${CMAKE_C_FLAGS} ${CMAKE_BUILD_FLAGS}  -D_GNU_SOURCE -I${CROSS_ROOT}/include")
-        set(CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS} ${CMAKE_BUILD_FLAGS}  -D_GNU_SOURCE -I${CROSS_ROOT}/include")
-        set(CMAKE_CPP_FLAGS " ${CMAKE_CPP_FLAGS} ${CMAKE_BUILD_FLAGS}  -D_GNU_SOURCE -I${CROSS_ROOT}/include")
+        set(CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS} ${CMAKE_BUILD_FLAGS}  -D_GNU_SOURCE -I${CROSS_ROOT}/include -fexceptions")
+        set(CMAKE_CPP_FLAGS " ${CMAKE_CPP_FLAGS} ${CMAKE_BUILD_FLAGS}  -D_GNU_SOURCE -I${CROSS_ROOT}/include -fexceptions")
 endif()
 
 # === Generic Build Settings ===
@@ -124,11 +148,19 @@ set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_BUILD_FLAGS}")
 # Linker flag to error on undefined symbols when building shared libraries
 # set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined")
 
+# === Logging ===
+# Add spdlog for logging
+add_subdirectory(${SPDLOG_DIR} ${CMAKE_CURRENT_BINARY_DIR}/spdlog)
+
+# === Link to c-utilities ===
+# Add the c-utilities subdirectory for building and linking
+add_subdirectory(${TOOLS_C_UTILITIES_DIR} ${CMAKE_CURRENT_BINARY_DIR}/c_utilities)
+
 # === Source Files ===
 # Add all source files for the runtime library
 file(GLOB_RECURSE SRC
-        ${SRC_DIR}/runtime_utils.c
-        ${SRC_DIR}/runtime_core.c
+        ${SRC_DIR}/runtime_utils.cpp
+        ${SRC_DIR}/runtime_core.cpp
 )
 
 # ####################### main bin build settings #######################################################################
@@ -178,6 +210,7 @@ endif()
 target_include_directories(RuntimeLibrary PUBLIC
         ${INCLUDE_DIR}
         ${TOOLS_C_UTILITIES_INCLUDE_DIR}
+        ${CONCURRENT_QUEUE_DIR}
         ${ONNX_RUNTIME_DIR}/${CUDA_BIN_FOLDER_NAME}/include
         ${ONNX_RUNTIME_DIR}/${CUDA_BIN_FOLDER_NAME}/include/onnxruntime/core/session
 )
@@ -202,10 +235,6 @@ target_link_directories(RuntimeLibrary PUBLIC
         "${ONNX_RUNTIME_DIR}/${CUDA_BIN_FOLDER_NAME}"
 )
 
-# === Link to c-utilities ===
-# Add the c-utilities subdirectory for building and linking
-add_subdirectory(${TOOLS_C_UTILITIES_DIR} ${CMAKE_CURRENT_BINARY_DIR}/c_utilities)
-
 # === Link Libraries ===
 # Link all required libraries and group them for the linker
 if(MSVC)
@@ -215,6 +244,7 @@ if(MSVC)
                 absl_bad_variant_access
                 absl_base absl_city
                 absl_civil_time absl_cord_internal absl_cord absl_cordz_functions absl_cordz_handle absl_cordz_info absl_crc_cord_state absl_crc_cpu_detect absl_crc_internal absl_crc32c absl_debugging_internal absl_decode_rust_punycode absl_demangle_internal absl_demangle_rust absl_examine_stack absl_exponential_biased absl_failure_signal_handler absl_flags_commandlineflag_internal absl_flags_commandlineflag absl_flags_config absl_flags_internal absl_flags_marshalling absl_flags_parse absl_flags_private_handle_accessor absl_flags_program_name absl_flags_reflection absl_flags_usage_internal absl_flags_usage absl_graphcycles_internal absl_hash absl_hashtablez_sampler absl_int128 absl_kernel_timeout_internal absl_log_entry absl_log_globals absl_log_internal_check_op absl_log_internal_conditions absl_log_internal_fnmatch absl_log_internal_format absl_log_internal_globals absl_log_internal_log_sink_set absl_log_internal_message absl_log_internal_nullguard absl_log_internal_proto absl_log_severity absl_log_sink absl_low_level_hash absl_malloc_internal absl_raw_hash_set absl_raw_logging_internal absl_spinlock_wait absl_stacktrace absl_str_format_internal absl_strerror absl_string_view absl_strings_internal absl_strings absl_symbolize absl_synchronization absl_throw_delegate absl_time_zone absl_time absl_utf8_for_code_point absl_vlog_config_internal CompilerIdCUDA cpuinfo custom_op_get_const_input_test_library custom_op_invalid_library custom_op_library custom_op_local_function flatbuffers gmock gtest libprotobuf-lite libprotobuf libprotoc onnx_proto onnx_test_data_proto onnx_test_runner_common onnx onnxruntime_common onnxruntime_flatbuffers onnxruntime_framework onnxruntime_graph onnxruntime_lora onnxruntime_mlas onnxruntime_mocked_allocator onnxruntime_optimizer onnxruntime_providers_cuda onnxruntime_providers_shared onnxruntime_providers onnxruntime_session onnxruntime_test_utils onnxruntime_util onnxruntime re2 test_execution_provider win_getopt_wide
+                spdlog::spdlog
 
                 cpuinfo re2 c_utilities
                 ws2_32 bcrypt
@@ -279,6 +309,7 @@ else()
                 protobuf-lite
                 re2
                 cpuinfo
+                spdlog::spdlog
 
                 ${ADDITIONAL_LIBS}
 
@@ -302,3 +333,15 @@ set_target_properties(RuntimeLibrary PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
         ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
 )
+
+# == Copy Windows runtime libraries == #
+if(MSVC)
+        file(GLOB_RECURSE WIN_RUNTIME_LIBS "${WINDOWS_RUNTIME_DIR}/*")
+
+        foreach(WIN_RUNTIME_LIB ${WIN_RUNTIME_LIBS})
+                add_custom_command(TARGET RuntimeLibrary POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        ${WIN_RUNTIME_LIB} $<TARGET_FILE_DIR:RuntimeLibrary>
+                )
+        endforeach()
+endif()

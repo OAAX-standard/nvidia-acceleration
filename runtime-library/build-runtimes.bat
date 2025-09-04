@@ -22,6 +22,23 @@ if exist "%ARTIFACTS_DIR%" rmdir /s /q "%ARTIFACTS_DIR%"
 REM Create a new, empty artifacts directory
 mkdir "%ARTIFACTS_DIR%"
 
+set "ROOT_DIR=%cd%\.."
+set "VERSION_FILE=%ROOT_DIR%\VERSION"
+if not exist "%VERSION_FILE%" (
+	echo VERSION file not found at "%VERSION_FILE%"
+	exit /b 1
+)
+for /f "usebackq delims=" %%A in ("%VERSION_FILE%") do (
+	set "RUNTIME_VERSION=%%A"
+	goto :got_version
+)
+:got_version
+if not defined RUNTIME_VERSION (
+	echo Failed to read runtime version from "%VERSION_FILE%"
+	exit /b 1
+)
+echo Building runtime version: %RUNTIME_VERSION%
+
 REM Call the function with the desired CUDA version
 call :build_runtime 11
 call :build_runtime 12
@@ -50,7 +67,7 @@ REM Delete all files in the build directory quietly (ignore errors/output)
 del /q * >nul 2>&1
 
 REM Run CMake to generate build files using the parent directory as the source
-cmake .. -DCUDA_VERSION=%cuda_version%
+cmake .. -DCUDA_VERSION=%cuda_version% -DRUNTIME_VERSION="%RUNTIME_VERSION%"
 
 REM If CMake failed, exit the script with error
 if errorlevel 1 exit /b 1

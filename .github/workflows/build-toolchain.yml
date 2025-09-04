@@ -1,14 +1,19 @@
 name: Build OAAX conversion toolchain
+permissions:
+  contents: none
 
 on:
   push:
-    # branches:
-    #   - main
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
   build-toolchain:
     timeout-minutes: 10  # Set a timeout of 10 minutes for the job
-    runs-on: self-hosted
+    runs-on: hetzner-runner
     container:
       image: ubuntu:22.04  # or any other image
       options: --volume /var/run/docker.sock:/var/run/docker.sock
@@ -22,8 +27,11 @@ jobs:
       - name: Install s3cmd
         run: |
           export DEBIAN_FRONTEND=noninteractive
-          apt-get update
+          apt-get update -y
           apt-get install -y s3cmd docker.io
+
+      - name: Build conversion toolchain image
+        run: bash conversion-toolchain/build-toolchain.sh
 
       - name: Configure s3cmd
         run: |
@@ -37,18 +45,22 @@ jobs:
           use_https = True
           EOF
 
-      - name: Build conversion toolchain image
-        run: bash conversion-toolchain/build-toolchain.sh
-
       - name: Determine version
         run: |
-          if [ -f VERSION ]; then
-            version=$(cat VERSION)
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            if [ -f VERSION ]; then
+              version=$(cat VERSION)
+            else
+              exit 1
+            fi
           else
-            exit 1
+            version=${{ github.head_ref }}
           fi
           echo "version=$version" >> $GITHUB_ENV
 
       - name: Upload Docker image to S3
         run: |
-          s3cmd put "conversion-toolchain/artifacts/oaax-cuda-toolchain.tar" "s3://oaax/conversion-toolchain/${{ env.version }}/CUDA/oaax-cuda-toolchain.tar"
+          s3cmd put "conversion-toolchain/artifacts/oaax-nvidia-toolchain.tar" "s3://oaax/conversion-toolchain/${{ env.version }}/NVIDIA/oaax-nvidia-toolchain.tar"
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            s3cmd put "conversion-toolchain/artifacts/oaax-nvidia-toolchain.tar" "s3://oaax/conversion-toolchain/latest/NVIDIA/oaax-nvidia-toolchain.tar"
+          fi

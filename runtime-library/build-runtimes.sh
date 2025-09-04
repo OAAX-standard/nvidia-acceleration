@@ -4,10 +4,16 @@ cd "$(dirname "$0")" || exit 1
 
 BUILD_DIR="$(pwd)/build"
 ARTIFACTS_DIR="$(pwd)/artifacts"
-rm -rf $BUILD_DIR
+ROOT_DIR="$(pwd)/.."
+
 mkdir -p $BUILD_DIR
 rm -rf $ARTIFACTS_DIR
 mkdir -p $ARTIFACTS_DIR
+
+VERSION_FILE="$ROOT_DIR/VERSION"
+RUNTIME_VERSION="$(cat $VERSION_FILE)"
+
+echo "Building for runtime version: $RUNTIME_VERSION"
 
 # Accept platform and CUDA version as arguments or set defaults
 ALL=0
@@ -27,7 +33,7 @@ function build_runtime {
 
     echo "Building runtime for platform: $platform with CUDA version: $cuda_version"
     rm -rf *
-    cmake .. -DPLATFORM=$platform -DCUDA_VERSION=$cuda_version
+    cmake .. -DPLATFORM=$platform -DCUDA_VERSION=$cuda_version -DRUNTIME_VERSION=$RUNTIME_VERSION
     make -j
 
     mkdir -p "${ARTIFACTS_DIR}/$platform/$cuda_version"
