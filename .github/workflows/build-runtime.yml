@@ -19,6 +19,12 @@ jobs:
       options: --volume /var/run/docker.sock:/var/run/docker.sock
 
     steps:
+      - name: Set up Docker Image
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y git git-lfs
+          git lfs install
       - name: Checkout
         uses: actions/checkout@v3
         with:
