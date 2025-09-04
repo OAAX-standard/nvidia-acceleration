@@ -91,6 +91,15 @@ extern "C" int runtime_initialization()
         logger->trace("ORT logging initialized");
         session_options = std::make_unique<Ort::SessionOptions>();
         session_options->SetIntraOpNumThreads(num_threads);
+        // Add CUDA execution provider
+        OrtCUDAProviderOptions cuda_options;
+        cuda_options.device_id = 0; // Use GPU 0
+        cuda_options.arena_extend_strategy = 0;
+        cuda_options.gpu_mem_limit = SIZE_MAX;
+        cuda_options.cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;
+        cuda_options.do_copy_in_default_stream = 1;
+        session_options->AppendExecutionProvider_CUDA(cuda_options);
+        session_options->SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
         logger->trace("Session options initialized");
         stop_inference_thread = false;
         inference_thread = std::thread(inference_thread_func);
