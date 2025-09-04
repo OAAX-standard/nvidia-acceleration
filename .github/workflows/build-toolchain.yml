@@ -28,7 +28,7 @@ jobs:
         run: |
           export DEBIAN_FRONTEND=noninteractive
           apt-get update -y
-          apt-get install -y s3cmd
+          apt-get install -y s3cmd docker.io
 
       - name: Build conversion toolchain image
         run: bash conversion-toolchain/build-toolchain.sh
