@@ -12,8 +12,11 @@ on:
 
 jobs:
   build-runtimes-for-ubuntu:
-    timeout-minutes: 20  # Set a timeout of 10 minutes for the job
-    runs-on: heavy-linux-x64
+    timeout-minutes: 30  # Set a timeout of 30 minutes for the job
+    runs-on: hetzner-runner
+    container:
+      image: ubuntu:22.04  # or any other image
+      options: --volume /var/run/docker.sock:/var/run/docker.sock
 
     steps:
       - name: Checkout
@@ -24,15 +27,15 @@ jobs:
           lfs: true
 
       - name: Set up environment
-        run: sudo bash scripts/setup-env.sh
+        run: bash scripts/setup-env.sh
 
       - name: Cross-compile runtimes
         run: bash runtime-library/build-runtimes.sh
 
       - name: Install s3cmd
         run: |
-          sudo apt-get update
-          sudo apt-get install -y s3cmd
+          apt-get update
+          apt-get install -y s3cmd
 
       - name: Configure s3cmd
         run: |

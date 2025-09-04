@@ -13,7 +13,10 @@ on:
 jobs:
   build-toolchain:
     timeout-minutes: 10  # Set a timeout of 10 minutes for the job
-    runs-on: ubuntu-latest
+    runs-on: hetzner-runner
+    container:
+      image: ubuntu:22.04  # or any other image
+      options: --volume /var/run/docker.sock:/var/run/docker.sock
 
     steps:
       - name: Checkout
@@ -24,8 +27,8 @@ jobs:
       - name: Install s3cmd
         run: |
           export DEBIAN_FRONTEND=noninteractive
-          sudo apt-get update -y
-          sudo apt-get install -y s3cmd
+          apt-get update -y
+          apt-get install -y s3cmd
 
       - name: Build conversion toolchain image
         run: bash conversion-toolchain/build-toolchain.sh
