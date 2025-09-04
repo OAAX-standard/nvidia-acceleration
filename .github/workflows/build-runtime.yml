@@ -12,7 +12,7 @@ on:
 
 jobs:
   build-runtimes-for-ubuntu:
-    timeout-minutes: 30  # Set a timeout of 30 minutes for the job
+    timeout-minutes: 60  # Set a timeout of 60 minutes for the job
     runs-on: hetzner-runner
     container:
       image: ubuntu:22.04  # or any other image
@@ -72,20 +72,17 @@ jobs:
 
       - name: Upload runtimes to S3
         run: |
-          s3cmd put "runtime-library/artifacts/runtime-library-AARCH64-cuda_11.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/aarch64/Ubuntu/library-cuda_11.tar.gz"
-          s3cmd put "runtime-library/artifacts/runtime-library-AARCH64-cuda_12.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/aarch64/Ubuntu/library-cuda_12.tar.gz"
-          s3cmd put "runtime-library/artifacts/runtime-library-X86_64-cuda_11.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/x86_64/Ubuntu/library-cuda_11.tar.gz"
-          s3cmd put "runtime-library/artifacts/runtime-library-X86_64-cuda_12.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/x86_64/Ubuntu/library-cuda_12.tar.gz"
-          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
-            s3cmd put "runtime-library/artifacts/runtime-library-AARCH64-cuda_11.tar.gz" "s3://oaax/runtimes/latest/NVIDIA/aarch64/Ubuntu/library-cuda_11.tar.gz"
-            s3cmd put "runtime-library/artifacts/runtime-library-AARCH64-cuda_12.tar.gz" "s3://oaax/runtimes/latest/NVIDIA/aarch64/Ubuntu/library-cuda_12.tar.gz"
-            s3cmd put "runtime-library/artifacts/runtime-library-X86_64-cuda_11.tar.gz" "s3://oaax/runtimes/latest/NVIDIA/x86_64/Ubuntu/library-cuda_11.tar.gz"
-            s3cmd put "runtime-library/artifacts/runtime-library-X86_64-cuda_12.tar.gz" "s3://oaax/runtimes/latest/NVIDIA/x86_64/Ubuntu/library-cuda_12.tar.gz"
-          fi
+            s3cmd put "runtime-library/artifacts/runtime-library-AARCH64-cuda_11.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/aarch64/Ubuntu/library-cuda_11.tar.gz"
+            s3cmd put "runtime-library/artifacts/runtime-library-AARCH64-cuda_12.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/aarch64/Ubuntu/library-cuda_12.tar.gz"
+            s3cmd put "runtime-library/artifacts/runtime-library-X86_64-cuda_11.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/x86_64/Ubuntu/library-cuda_11.tar.gz"
+            s3cmd put "runtime-library/artifacts/runtime-library-X86_64-cuda_12.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/x86_64/Ubuntu/library-cuda_12.tar.gz"
+            if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+              s3cmd sync "s3://oaax/runtimes/${{ env.version }}/NVIDIA/" "s3://oaax/runtimes/latest/NVIDIA/"
+            fi
 
   build-runtime-for-windows-x86_64:
-    timeout-minutes: 30  # Set a timeout of 30 minutes for the job
-    runs-on: heavy-windows-runner
+    timeout-minutes: 60  # Set a timeout of 60 minutes for the job
+    runs-on: windows-latest
 
     steps:
       - name: Checkout
@@ -135,6 +132,5 @@ jobs:
           s5cmd --endpoint-url "https://${{ secrets.S3_ENDPOINT_URL }}" cp "$localFolder\runtime-library-X86_64-Windows-cuda_11.tar.gz" "s3://oaax/runtimes/$version/NVIDIA/x86_64/Windows/library-cuda_11.tar.gz"
           s5cmd --endpoint-url "https://${{ secrets.S3_ENDPOINT_URL }}" cp "$localFolder\runtime-library-X86_64-Windows-cuda_12.tar.gz" "s3://oaax/runtimes/$version/NVIDIA/x86_64/Windows/library-cuda_12.tar.gz"
           if ("${{ github.ref }}" -eq "refs/heads/main") {
-            s5cmd --endpoint-url "https://${{ secrets.S3_ENDPOINT_URL }}" cp "$localFolder\runtime-library-X86_64-Windows-cuda_11.tar.gz" "s3://oaax/runtimes/latest/NVIDIA/x86_64/Windows/library-cuda_11.tar.gz"
-            s5cmd --endpoint-url "https://${{ secrets.S3_ENDPOINT_URL }}" cp "$localFolder\runtime-library-X86_64-Windows-cuda_12.tar.gz" "s3://oaax/runtimes/latest/NVIDIA/x86_64/Windows/library-cuda_12.tar.gz"
+            s5cmd --endpoint-url "https://${{ secrets.S3_ENDPOINT_URL }}" sync "s3://oaax/runtimes/$version/NVIDIA/" "s3://oaax/runtimes/latest/NVIDIA/"
           }

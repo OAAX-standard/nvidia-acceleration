@@ -12,7 +12,7 @@ on:
 
 jobs:
   build-toolchain:
-    timeout-minutes: 10  # Set a timeout of 10 minutes for the job
+    timeout-minutes: 20  # Set a timeout of 20 minutes for the job
     runs-on: hetzner-runner
     container:
       image: ubuntu:22.04  # or any other image
@@ -62,5 +62,5 @@ jobs:
         run: |
           s3cmd put "conversion-toolchain/artifacts/oaax-nvidia-toolchain.tar" "s3://oaax/conversion-toolchain/${{ env.version }}/NVIDIA/oaax-nvidia-toolchain.tar"
           if [ "${{ github.ref }}" == "refs/heads/main" ]; then
-            s3cmd put "conversion-toolchain/artifacts/oaax-nvidia-toolchain.tar" "s3://oaax/conversion-toolchain/latest/NVIDIA/oaax-nvidia-toolchain.tar"
+            s3cmd sync "s3://oaax/conversion-toolchain/${{ env.version }}/NVIDIA/oaax-nvidia-toolchain.tar" "s3://oaax/conversion-toolchain/latest/NVIDIA/oaax-nvidia-toolchain.tar"
           fi
