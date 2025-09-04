@@ -25,6 +25,7 @@ jobs:
           apt-get update
           apt-get install -y git git-lfs
           git lfs install
+
       - name: Checkout
         uses: actions/checkout@v3
         with:
@@ -40,6 +41,7 @@ jobs:
 
       - name: Install s3cmd
         run: |
+          export DEBIAN_FRONTEND=noninteractive
           apt-get update
           apt-get install -y s3cmd
 
