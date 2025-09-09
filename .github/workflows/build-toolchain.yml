@@ -47,7 +47,7 @@ jobs:
 
       - name: Determine version
         run: |
-          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             if [ -f VERSION ]; then
               version=$(cat VERSION)
             else
@@ -61,6 +61,6 @@ jobs:
       - name: Upload Docker image to S3
         run: |
           s3cmd put "conversion-toolchain/artifacts/oaax-nvidia-toolchain.tar" "s3://oaax/conversion-toolchain/${{ env.version }}/NVIDIA/oaax-nvidia-toolchain.tar"
-          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             s3cmd sync "s3://oaax/conversion-toolchain/${{ env.version }}/NVIDIA/oaax-nvidia-toolchain.tar" "s3://oaax/conversion-toolchain/latest/NVIDIA/oaax-nvidia-toolchain.tar"
           fi
