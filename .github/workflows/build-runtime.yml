@@ -76,7 +76,7 @@ jobs:
             s3cmd put "runtime-library/artifacts/runtime-library-AARCH64-cuda_12.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/aarch64/Ubuntu/library-cuda_12.tar.gz"
             s3cmd put "runtime-library/artifacts/runtime-library-X86_64-cuda_11.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/x86_64/Ubuntu/library-cuda_11.tar.gz"
             s3cmd put "runtime-library/artifacts/runtime-library-X86_64-cuda_12.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/x86_64/Ubuntu/library-cuda_12.tar.gz"
-            if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            if [ "${{ github.ref }}" = "refs/heads/main" ]; then
               s3cmd sync "s3://oaax/runtimes/${{ env.version }}/NVIDIA/*" "s3://oaax/runtimes/latest/NVIDIA/" 
             fi
 
