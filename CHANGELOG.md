@@ -9,3 +9,7 @@
 
 # Version 1.1.1 (2025-09-03)
 - Fix a bug where inference stops working after a few iterations for some models
+
+# Version 1.1.2 (2025-10-14)
+- Adds support for Ubuntu 25, by removing the executable flag from the libraries ELF.
+- Includes `msvcp140_1.dll` in the Windows artifacts to fix runtime errors on some systems.
