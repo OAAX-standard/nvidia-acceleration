@@ -47,6 +47,7 @@ function build_runtime {
     echo "Shared libraries for $platform have been copied to ${ARTIFACTS_DIR}/$platform/$cuda_version/"
 }
 
+# X86_64 builds
 if [[ "$PLATFORM" == "X86_64" && "$CUDA_VERSION" == "11" || "$ALL" == "1" ]]; then
     build_runtime "X86_64" "11"
 fi
@@ -56,9 +57,14 @@ fi
 if [[ "$PLATFORM" == "X86_64" && "$CUDA_VERSION" == "13" || "$ALL" == "1" ]]; then
     build_runtime "X86_64" "13"
 fi
+
+# AARCH64 builds
 if [[ "$PLATFORM" == "AARCH64" && "$CUDA_VERSION" == "11" || "$ALL" == "1" ]]; then
     build_runtime "AARCH64" "11"
 fi
 if [[ "$PLATFORM" == "AARCH64" && "$CUDA_VERSION" == "12" || "$ALL" == "1" ]]; then
     build_runtime "AARCH64" "12"
+fi
+if [[ "$PLATFORM" == "AARCH64" && "$CUDA_VERSION" == "13" || "$ALL" == "1" ]]; then
+    build_runtime "AARCH64" "13"
 fi
