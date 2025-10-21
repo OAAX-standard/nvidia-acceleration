@@ -74,8 +74,10 @@ jobs:
         run: |
             s3cmd put "runtime-library/artifacts/runtime-library-AARCH64-cuda_11.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/aarch64/Ubuntu/library-cuda_11.tar.gz"
             s3cmd put "runtime-library/artifacts/runtime-library-AARCH64-cuda_12.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/aarch64/Ubuntu/library-cuda_12.tar.gz"
+            s3cmd put "runtime-library/artifacts/runtime-library-AARCH64-cuda_13.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/aarch64/Ubuntu/library-cuda_13.tar.gz"
             s3cmd put "runtime-library/artifacts/runtime-library-X86_64-cuda_11.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/x86_64/Ubuntu/library-cuda_11.tar.gz"
             s3cmd put "runtime-library/artifacts/runtime-library-X86_64-cuda_12.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/x86_64/Ubuntu/library-cuda_12.tar.gz"
+            s3cmd put "runtime-library/artifacts/runtime-library-X86_64-cuda_13.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/x86_64/Ubuntu/library-cuda_13.tar.gz"
             if [ "${{ github.ref }}" = "refs/heads/main" ]; then
               s3cmd sync "s3://oaax/runtimes/${{ env.version }}/NVIDIA/*" "s3://oaax/runtimes/latest/NVIDIA/" 
             fi
@@ -131,6 +133,7 @@ jobs:
 
           s5cmd --endpoint-url "https://${{ secrets.S3_ENDPOINT_URL }}" cp "$localFolder\runtime-library-X86_64-Windows-cuda_11.tar.gz" "s3://oaax/runtimes/$version/NVIDIA/x86_64/Windows/library-cuda_11.tar.gz"
           s5cmd --endpoint-url "https://${{ secrets.S3_ENDPOINT_URL }}" cp "$localFolder\runtime-library-X86_64-Windows-cuda_12.tar.gz" "s3://oaax/runtimes/$version/NVIDIA/x86_64/Windows/library-cuda_12.tar.gz"
+          s5cmd --endpoint-url "https://${{ secrets.S3_ENDPOINT_URL }}" cp "$localFolder\runtime-library-X86_64-Windows-cuda_13.tar.gz" "s3://oaax/runtimes/$version/NVIDIA/x86_64/Windows/library-cuda_13.tar.gz"
           if ("${{ github.ref }}" -eq "refs/heads/main") {
             s5cmd --endpoint-url "https://${{ secrets.S3_ENDPOINT_URL }}" sync "s3://oaax/runtimes/$version/NVIDIA/*" "s3://oaax/runtimes/latest/NVIDIA/"
           }
