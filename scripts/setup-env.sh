@@ -15,6 +15,7 @@ toolchain_urls=(
     "https://oaax.nbg1.your-objectstorage.com/toolchains/x86_64-unknown-linux-gnu-gcc-9.5.0.tar.gz"
     "https://oaax.nbg1.your-objectstorage.com/toolchains/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu.tar.gz"
     "https://oaax.nbg1.your-objectstorage.com/toolchains/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu.tar.xz"
+    "https://oaax.nbg1.your-objectstorage.com/toolchains/x86-64-v2--glibc--stable-2022.08-1.tar.bz2"
 )
 
 # Function to extract the filename from a given URL
