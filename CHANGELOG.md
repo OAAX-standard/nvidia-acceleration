@@ -13,3 +13,7 @@
 # Version 1.1.2 (2025-10-14)
 - Adds support for Ubuntu 25, by removing the executable flag from the libraries ELF.
 - Includes `msvcp140_1.dll` in the Windows artifacts to fix runtime errors on some systems.
+
+# Version 1.2.0 (2025-10-30)
+- Adds support for CUDA 13 on Linux & Windows
+- Adds support for JetPack SDK 7.0

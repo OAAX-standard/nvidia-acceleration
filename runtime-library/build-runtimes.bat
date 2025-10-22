@@ -42,6 +42,7 @@ echo Building runtime version: %RUNTIME_VERSION%
 REM Call the function with the desired CUDA version
 call :build_runtime 11
 call :build_runtime 12
+call :build_runtime 13
 REM End local environment changes
 endlocal
 goto :eof

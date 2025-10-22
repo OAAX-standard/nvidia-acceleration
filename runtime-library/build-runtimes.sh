@@ -37,23 +37,34 @@ function build_runtime {
     make -j
 
     mkdir -p "${ARTIFACTS_DIR}/$platform/$cuda_version"
+    echo "Copying shared libraries to artifacts directory..."
     cp ./bin/* "${ARTIFACTS_DIR}/$platform/$cuda_version/"
     # Bundle the shared libraries into a tarball
     cd "${ARTIFACTS_DIR}/$platform/$cuda_version/"
+    echo "Creating tarball of shared libraries..."
     tar czf "../../runtime-library-${platform}-cuda_${cuda_version}.tar.gz" ./*
 
     echo "Shared libraries for $platform have been copied to ${ARTIFACTS_DIR}/$platform/$cuda_version/"
 }
 
+# X86_64 builds
 if [[ "$PLATFORM" == "X86_64" && "$CUDA_VERSION" == "11" || "$ALL" == "1" ]]; then
     build_runtime "X86_64" "11"
 fi
 if [[ "$PLATFORM" == "X86_64" && "$CUDA_VERSION" == "12" || "$ALL" == "1" ]]; then
     build_runtime "X86_64" "12"
 fi
+if [[ "$PLATFORM" == "X86_64" && "$CUDA_VERSION" == "13" || "$ALL" == "1" ]]; then
+    build_runtime "X86_64" "13"
+fi
+
+# AARCH64 builds
 if [[ "$PLATFORM" == "AARCH64" && "$CUDA_VERSION" == "11" || "$ALL" == "1" ]]; then
     build_runtime "AARCH64" "11"
 fi
 if [[ "$PLATFORM" == "AARCH64" && "$CUDA_VERSION" == "12" || "$ALL" == "1" ]]; then
     build_runtime "AARCH64" "12"
+fi
+if [[ "$PLATFORM" == "AARCH64" && "$CUDA_VERSION" == "13" || "$ALL" == "1" ]]; then
+    build_runtime "AARCH64" "13"
 fi
