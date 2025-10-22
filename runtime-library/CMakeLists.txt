@@ -250,6 +250,120 @@ target_link_directories(RuntimeLibrary PUBLIC
 # === Link Libraries ===
 # Link all required libraries and group them for the linker
 if(MSVC)
+        if(CUDA_VERSION STREQUAL "13")
+        target_link_libraries(RuntimeLibrary PUBLIC
+
+                absl_base
+                absl_city
+                absl_civil_time
+                absl_cord
+                absl_cord_internal
+                absl_cordz_functions
+                absl_cordz_handle
+                absl_cordz_info
+                absl_crc_cord_state
+                absl_crc_cpu_detect
+                absl_crc_internal
+                absl_crc32c
+                absl_debugging_internal
+                absl_decode_rust_punycode
+                absl_demangle_internal
+                absl_demangle_rust
+                absl_examine_stack
+                absl_exponential_biased
+                absl_failure_signal_handler
+                absl_flags_commandlineflag
+                absl_flags_commandlineflag_internal
+                absl_flags_config
+                absl_flags_internal
+                absl_flags_marshalling
+                absl_flags_parse
+                absl_flags_private_handle_accessor
+                absl_flags_program_name
+                absl_flags_reflection
+                absl_flags_usage
+                absl_flags_usage_internal
+                absl_graphcycles_internal
+                absl_hash
+                absl_hashtablez_sampler
+                absl_int128
+                absl_kernel_timeout_internal
+                absl_leak_check
+                absl_log_globals
+                absl_log_internal_check_op
+                absl_log_internal_conditions
+                absl_log_internal_fnmatch
+                absl_log_internal_format
+                absl_log_internal_globals
+                absl_log_internal_log_sink_set
+                absl_log_internal_message
+                absl_log_internal_nullguard
+                absl_log_internal_proto
+                absl_log_internal_structured_proto
+                absl_log_severity
+                absl_log_sink
+                absl_low_level_hash
+                absl_malloc_internal
+                absl_raw_hash_set
+                absl_raw_logging_internal
+                absl_spinlock_wait
+                absl_stacktrace
+                absl_str_format_internal
+                absl_strerror
+                absl_string_view
+                absl_strings
+                absl_strings_internal
+                absl_symbolize
+                absl_synchronization
+                absl_throw_delegate
+                absl_time
+                absl_time_zone
+                absl_tracing_internal
+                absl_utf8_for_code_point
+                absl_vlog_config_internal
+                CompilerIdCUDA
+                cpuinfo
+                custom_op_get_const_input_test_library
+                custom_op_invalid_library
+                custom_op_library
+                custom_op_local_function
+                example_plugin_ep
+                flatbuffers
+                gmock
+                gtest
+                libprotobuf
+                libprotobuf-lite
+                libprotoc
+                onnx
+                onnx_proto
+                onnx_test_data_proto
+                onnx_test_runner_common
+                onnxruntime
+                onnxruntime_common
+                onnxruntime_flatbuffers
+                onnxruntime_framework
+                onnxruntime_graph
+                onnxruntime_lora
+                onnxruntime_mlas
+                onnxruntime_mocked_allocator
+                onnxruntime_optimizer
+                onnxruntime_providers
+                onnxruntime_providers_cuda
+                onnxruntime_providers_shared
+                onnxruntime_session
+                onnxruntime_test_utils
+                onnxruntime_unittest_utils
+                onnxruntime_util
+                re2
+                test_execution_provider
+                win_getopt_wide
+                
+                spdlog::spdlog
+
+                cpuinfo re2 c_utilities
+                ws2_32 bcrypt
+        )
+        else ()
         target_link_libraries(RuntimeLibrary PUBLIC
                 absl_bad_any_cast_impl
                 absl_bad_optional_access
@@ -261,6 +375,7 @@ if(MSVC)
                 cpuinfo re2 c_utilities
                 ws2_32 bcrypt
         )
+        endif()
 
         # copy shared libraries to binary directory
         file(GLOB ONNXRUNTIME_DLLS "${ONNX_RUNTIME_DIR}/${CUDA_BIN_FOLDER_NAME}/*.dll")
