@@ -29,7 +29,7 @@ if(WIN32)
 endif()
 
 if(NOT DEFINED PLATFORM)
-        message(FATAL_ERROR "Please specify the target platform: -DPLATFORM=X86_64, -DPLATFORM=AARCH64, or use Windows.")
+        message(FATAL_ERROR "Please specify the target platform: -DPLATFORM=X86_64, -DPLATFORM=AARCH64, -DPLATFORM=AARCH64_SERVER, or use Windows.")
 endif()
 
 set(CUDA_VERSION "11" CACHE STRING "CUDA version")
@@ -80,6 +80,17 @@ elseif(PLATFORM STREQUAL "AARCH64")
 
         set(COMPILER_PREFIX "aarch64-none-linux-gnu-")
         set(ADDITIONAL_LIBS "clog")
+elseif(PLATFORM STREQUAL "AARCH64_SERVER")
+        # Target: aarch64 server machines (e.g. NVIDIA DGX Spark with Grace CPU)
+        set(GENERIC_BUILD_TARGET AARCH64_SERVER)
+        set(CMAKE_SYSTEM_PROCESSOR aarch64)
+        set(CMAKE_SYSTEM_NAME Linux)
+
+        # ARM GCC 13.2 toolchain — supports -mcpu=neoverse-v2 for NVIDIA Grace CPU
+        set(CROSS_ROOT "/opt/arm-gnu-toolchain-13.2.Rel1-x86_64-aarch64-none-linux-gnu")
+        set(COMPILER_PREFIX "aarch64-none-linux-gnu-")
+
+        set(CMAKE_BUILD_FLAGS "-fno-math-errno -fopenmp")
 elseif(PLATFORM STREQUAL "WINDOWS")
         set(GENERIC_BUILD_TARGET X86_64_WINDOWS)
         set(CMAKE_SYSTEM_PROCESSOR x86_64)
@@ -91,7 +102,7 @@ elseif(PLATFORM STREQUAL "WINDOWS")
 
 # Do not add compiler flags to CMAKE_BUILD_FLAGS to avoid linker warnings
 else()
-        message(FATAL_ERROR "Please specify the target platform: X86_64, AARCH64, or WINDOWS. Found ${PLATFORM}")
+        message(FATAL_ERROR "Please specify the target platform: X86_64, AARCH64, AARCH64_SERVER, or WINDOWS. Found ${PLATFORM}")
 endif()
 
 # Print toolchain and sysroot info for debugging
@@ -392,7 +403,7 @@ if(MSVC)
         )
 else()
         if(CUDA_VERSION STREQUAL "13")
-                if(PLATFORM STREQUAL "AARCH64")
+                if(PLATFORM STREQUAL "AARCH64" OR PLATFORM STREQUAL "AARCH64_SERVER")
                         target_link_libraries(RuntimeLibrary PUBLIC
                                 -Wl,--start-group
 
