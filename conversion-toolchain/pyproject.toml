@@ -1,0 +1,17 @@
+[project]
+name = "conversion-toolchain"
+version = "1.0.0"
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "pillow",
+    "onnx",
+    "pycuda",
+]
+
+[project.scripts]
+conversion_toolchain = "conversion_toolchain.main:cli"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.backends.legacy:build"
