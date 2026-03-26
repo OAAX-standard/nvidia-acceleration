@@ -41,8 +41,9 @@ No separate TensorRT or CUDA installation is needed on the target — the runtim
 
 ## Development environment
 
-The **conversion toolchain** build machine needs a GPU at image-build time:
-- Linux (x86_64), NVIDIA GPU + driver, Docker, nvidia-container-toolkit
+The **conversion toolchain** build machine only needs Docker to build the image. A GPU is required on the machine that **runs** the toolchain to convert a model:
+- Linux (x86_64), Docker (image build only)
+- Linux, NVIDIA GPU + driver, nvidia-container-toolkit (model conversion)
 
 The **runtime library** build machine is GPU-free (cross-compilation):
 - Linux x86_64, CMake ≥ 3.14, platform-specific cross-compilation toolchains

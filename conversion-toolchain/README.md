@@ -1,10 +1,14 @@
 # Conversion Toolchain
 
-Compiles an ONNX model into a TensorRT engine (`.trt`) optimised for a specific NVIDIA GPU architecture. The engine is produced at conversion time on a machine with a physical GPU — TensorRT profiles and compiles kernels against real hardware.
+Compiles an ONNX model into a TensorRT engine (`.trt`) optimised for a specific NVIDIA GPU architecture. The engine is produced at conversion time — TensorRT profiles and compiles kernels against real hardware, so a physical GPU is required when **running** the toolchain.
+
+Building the Docker image itself requires only Docker and does not need a GPU.
 
 ## Host machine setup
 
-**Requirements:** Linux, NVIDIA GPU + driver, Docker, nvidia-container-toolkit.
+**To build the image:** Linux, Docker.
+
+**To run a conversion:** Linux, NVIDIA GPU + driver, Docker, nvidia-container-toolkit.
 
 **1. Install the NVIDIA driver**
 ```bash
