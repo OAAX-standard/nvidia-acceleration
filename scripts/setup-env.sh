@@ -6,44 +6,70 @@ set -e
 # Change the working directory to the directory of the script
 cd "$(dirname "$0")"
 
-# Install ubuntu packages
 export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
 apt-get install -y wget curl build-essential
 
-# Define an array of URLs for downloading toolchains
+# ── Cross-compilation toolchains ──────────────────────────────────────────────
 toolchain_urls=(
-    "https://oaax.nbg1.your-objectstorage.com/toolchains/x86_64-unknown-linux-gnu-gcc-9.5.0.tar.gz"
-    "https://oaax.nbg1.your-objectstorage.com/toolchains/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu.tar.gz"
-    "https://oaax.nbg1.your-objectstorage.com/toolchains/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu.tar.xz"
     "https://oaax.nbg1.your-objectstorage.com/toolchains/x86-64-v2--glibc--stable-2022.08-1.tar.bz2"
-    "https://developer.arm.com/-/media/Files/downloads/gnu/13.2.rel1/binrel/arm-gnu-toolchain-13.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz"
+    "https://oaax.nbg1.your-objectstorage.com/toolchains/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu.tar.xz"
+    "https://oaax.nbg1.your-objectstorage.com/toolchains/arm-gnu-toolchain-13.2.Rel1-x86_64-aarch64-none-linux-gnu.tar.xz"
 )
 
-# Function to extract the filename from a given URL
 function get_filename_from_url() {
     local url=$1
-    echo "${url##*/}" # Extract the part of the URL after the last '/'
+    echo "${url##*/}"
 }
 
-# Iterate over all toolchain URLs to download and extract them
 for url in "${toolchain_urls[@]}"; do
-    filename=$(get_filename_from_url $url) # Get the filename from the URL
-    echo wget -nv -c "$url"                # Print the wget command for logging
-    wget -nv -c "$url"                     # Download the file with minimal output and resume capability
-    # Extract the downloaded file to /opt, trying both gzip and non-gzip formats
-    tar xzf $filename -C /opt 2>/dev/null || tar xf $filename -C /opt
-    # Remove the downloaded file after extraction
-    rm -rf $filename || true
-    # Log the successful extraction of the file
-    echo ">>>>>>>>>>> extracted: $filename"
+    filename=$(get_filename_from_url "$url")
+    echo "Downloading: $url"
+    wget -nv -c "$url"
+    tar xzf "$filename" -C /opt 2>/dev/null || tar xf "$filename" -C /opt
+    rm -f "$filename"
+    echo "Extracted: $filename"
 done
 
-# Install cmake
+# ── TensorRT archives ─────────────────────────────────────────────────────────
+# TRT archives are large (~2 GB each). Host them on your own storage and set
+# the URLs below (or override with TRT_X86_URL / TRT_AARCH64_URL env vars).
+TRT_X86_URL="${TRT_X86_URL:-https://oaax.nbg1.your-objectstorage.com/toolchains/TensorRT-10.16.0.72.Linux.x86_64-gnu.cuda-13.2.tar.gz}"
+TRT_AARCH64_URL="${TRT_AARCH64_URL:-https://oaax.nbg1.your-objectstorage.com/toolchains/TensorRT-10.16.0.72.Linux.aarch64-gnu.cuda-13.2.tar.gz}"
+
+for url in "$TRT_X86_URL" "$TRT_AARCH64_URL"; do
+    filename=$(get_filename_from_url "$url")
+    echo "Downloading: $url"
+    wget -nv -c "$url"
+    # Extract to a versioned directory so x86 and aarch64 don't overwrite each other
+    if echo "$filename" | grep -q "x86_64"; then
+        mkdir -p /opt/TensorRT-x86_64
+        tar xf "$filename" --strip-components=1 -C /opt/TensorRT-x86_64
+    else
+        mkdir -p /opt/TensorRT-aarch64
+        tar xf "$filename" --strip-components=1 -C /opt/TensorRT-aarch64
+    fi
+    rm -f "$filename"
+    echo "Extracted: $filename"
+done
+
+# ── CUDA toolkit (headers + cross-compilation stubs) ─────────────────────────
+# Install CUDA 13 from NVIDIA's apt repository for both native and cross builds.
+wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+dpkg -i cuda-keyring_1.1-1_all.deb
+rm cuda-keyring_1.1-1_all.deb
+apt-get update -y
+# Native x86_64 CUDA runtime + headers
+apt-get install -y cuda-cudart-dev-13-2 cuda-libraries-dev-13-2
+# aarch64 cross-compilation stubs (sbsa = server base system architecture)
+apt-get install -y cuda-cross-aarch64-13-2 || true
+
+# ── CMake ─────────────────────────────────────────────────────────────────────
 host_platform=$(uname -m)
-wget https://cmake.org/files/v3.31/cmake-3.31.7-linux-${host_platform}.sh \
-    -q -O /tmp/cmake-install.sh &&
-    chmod u+x /tmp/cmake-install.sh &&
-    mkdir /opt/cmake-3.31.7 &&
-    /tmp/cmake-install.sh --skip-license --prefix=/opt/cmake-3.31.7 &&
-    rm /tmp/cmake-install.sh &&
-    ln -fs /opt/cmake-3.31.7/bin/* /usr/local/bin
+wget -q "https://cmake.org/files/v3.31/cmake-3.31.7-linux-${host_platform}.sh" \
+    -O /tmp/cmake-install.sh
+chmod u+x /tmp/cmake-install.sh
+mkdir -p /opt/cmake-3.31.7
+/tmp/cmake-install.sh --skip-license --prefix=/opt/cmake-3.31.7
+rm /tmp/cmake-install.sh
+ln -fs /opt/cmake-3.31.7/bin/* /usr/local/bin

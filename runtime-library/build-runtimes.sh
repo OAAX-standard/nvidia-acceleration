@@ -1,75 +1,59 @@
 set -e
 
-cd "$(dirname "$0")" || exit 1
+cd "$(dirname "$0")"
 
-BUILD_DIR="$(pwd)/build"
-ARTIFACTS_DIR="$(pwd)/artifacts"
-ROOT_DIR="$(pwd)/.."
+VERSION_FILE="../../VERSION"
+if [ ! -f "$VERSION_FILE" ]; then
+    echo "Version file not found: $VERSION_FILE"
+    exit 1
+fi
+VERSION=$(<"$VERSION_FILE")
 
-mkdir -p $BUILD_DIR
-rm -rf $ARTIFACTS_DIR
-mkdir -p $ARTIFACTS_DIR
-
-VERSION_FILE="$ROOT_DIR/VERSION"
-RUNTIME_VERSION="$(cat $VERSION_FILE)"
-
-echo "Building for runtime version: $RUNTIME_VERSION"
-
-# Accept platform and CUDA version as arguments or set defaults
-ALL=0
-if [ $# -lt 2 ]; then
-    ALL=1
-else
-    PLATFORM=$1
-    CUDA_VERSION=$2
+# Auto-detect platform if not provided
+if [ -z "$PLATFORM" ]; then
+    ARCH=$(uname -m)
+    if [ "$ARCH" = "aarch64" ]; then
+        PLATFORM="AARCH64_SERVER"
+    else
+        PLATFORM="X86_64"
+    fi
+    echo "Auto-detected PLATFORM=$PLATFORM"
 fi
 
-function build_runtime {
-    platform=$1
-    cuda_version=$2
+BUILD_TYPE="${BUILD_TYPE:-Release}"
 
-    # Go to the build directory
-    cd "$BUILD_DIR"
-
-    echo "Building runtime for platform: $platform with CUDA version: $cuda_version"
-    rm -rf *
-    cmake .. -DPLATFORM=$platform -DCUDA_VERSION=$cuda_version -DRUNTIME_VERSION=$RUNTIME_VERSION
-    make -j
-
-    mkdir -p "${ARTIFACTS_DIR}/$platform/$cuda_version"
-    echo "Copying shared libraries to artifacts directory..."
-    cp ./bin/* "${ARTIFACTS_DIR}/$platform/$cuda_version/"
-    # Bundle the shared libraries into a tarball
-    cd "${ARTIFACTS_DIR}/$platform/$cuda_version/"
-    echo "Creating tarball of shared libraries..."
-    tar czf "../../runtime-library-${platform}-cuda_${cuda_version}.tar.gz" ./*
-
-    echo "Shared libraries for $platform have been copied to ${ARTIFACTS_DIR}/$platform/$cuda_version/"
-}
-
-# X86_64 builds
-if [[ "$PLATFORM" == "X86_64" && "$CUDA_VERSION" == "11" || "$ALL" == "1" ]]; then
-    build_runtime "X86_64" "11"
+# TRT_DIR: path to TensorRT installation (e.g. TensorRT-10.x.y.z/ from the archive)
+# CUDA_DIR: path to CUDA toolkit (e.g. /usr/local/cuda or /opt/cuda-13.0)
+if [ -z "$TRT_DIR" ]; then
+    echo "Error: TRT_DIR is not set."
+    echo "  Set it to the extracted TensorRT archive directory (must contain include/ and lib/)."
+    echo "  Example: TRT_DIR=/opt/TensorRT-10.16.0.72 PLATFORM=X86_64 ./build-runtimes.sh"
+    exit 1
 fi
-if [[ "$PLATFORM" == "X86_64" && "$CUDA_VERSION" == "12" || "$ALL" == "1" ]]; then
-    build_runtime "X86_64" "12"
-fi
-if [[ "$PLATFORM" == "X86_64" && "$CUDA_VERSION" == "13" || "$ALL" == "1" ]]; then
-    build_runtime "X86_64" "13"
+if [ -z "$CUDA_DIR" ]; then
+    echo "Error: CUDA_DIR is not set."
+    echo "  Set it to the CUDA toolkit directory (must contain include/ and lib/ or lib64/)."
+    echo "  Example: CUDA_DIR=/usr/local/cuda PLATFORM=X86_64 ./build-runtimes.sh"
+    exit 1
 fi
 
-# AARCH64 builds (Jetson and other embedded aarch64 devices)
-if [[ "$PLATFORM" == "AARCH64" && "$CUDA_VERSION" == "11" || "$ALL" == "1" ]]; then
-    build_runtime "AARCH64" "11"
-fi
-if [[ "$PLATFORM" == "AARCH64" && "$CUDA_VERSION" == "12" || "$ALL" == "1" ]]; then
-    build_runtime "AARCH64" "12"
-fi
-if [[ "$PLATFORM" == "AARCH64" && "$CUDA_VERSION" == "13" || "$ALL" == "1" ]]; then
-    build_runtime "AARCH64" "13"
-fi
+echo "Building: PLATFORM=$PLATFORM  VERSION=$VERSION  BUILD_TYPE=$BUILD_TYPE"
+echo "          TRT_DIR=$TRT_DIR"
+echo "          CUDA_DIR=$CUDA_DIR"
 
-# AARCH64_SERVER builds (aarch64 server machines, e.g. NVIDIA DGX Spark with Grace CPU)
-if [[ "$PLATFORM" == "AARCH64_SERVER" && "$CUDA_VERSION" == "13" || "$ALL" == "1" ]]; then
-    build_runtime "AARCH64_SERVER" "13"
-fi
+BUILD_DIR="build/${PLATFORM}"
+rm -rf "$BUILD_DIR"
+mkdir -p "$BUILD_DIR"
+cd "$BUILD_DIR"
+
+cmake \
+    -DPLATFORM="$PLATFORM" \
+    -DRUNTIME_VERSION="$VERSION" \
+    -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+    -DTRT_DIR="$TRT_DIR" \
+    -DCUDA_DIR="$CUDA_DIR" \
+    ../..
+
+make -j"$(nproc)"
+
+echo "Build complete. Output: ${BUILD_DIR}/bin/"

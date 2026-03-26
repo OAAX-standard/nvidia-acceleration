@@ -1,30 +1,30 @@
-
 #ifndef RUNTIME_UTILS_HPP
 #define RUNTIME_UTILS_HPP
 
 #include "runtime_core.hpp"
-#include <vector>
-#include <onnxruntime_cxx_api.h>
+#include <NvInfer.h>
 #include <spdlog/spdlog.h>
 #include "concurrentqueue.h"
+#include <string>
+#include <vector>
 
 using namespace std;
 
-// Get output names from the ONNX Runtime session
-vector<char *> get_output_names(Ort::Session &session);
+// Map a TensorRT DataType to the OAAX tensor_data_type enum
+tensor_data_type map_trt_to_oaax_type(nvinfer1::DataType dtype);
 
-// Map tensor_data_type to ONNX Runtime ONNXTensorElementDataType
-ONNXTensorElementDataType map_to_ort_type(tensor_data_type t);
+// Return the byte size of a single element for a TensorRT DataType
+size_t trt_dtype_byte_size(nvinfer1::DataType dtype);
 
-// Map ONNX Runtime ONNXTensorElementDataType to tensor_data_type
-tensor_data_type map_to_tensors_struct_type(ONNXTensorElementDataType type);
+// Compute total byte size of a tensor given its dims and dtype
+size_t compute_tensor_byte_size(const nvinfer1::Dims &dims, nvinfer1::DataType dtype);
 
 shared_ptr<spdlog::logger> initialize_logger(const string &log_file,
                                              int file_level = spdlog::level::info,
                                              int console_level = spdlog::level::info,
                                              const string prefix = "OAAX");
 
-void destroy_logger(std::shared_ptr<spdlog::logger> logger);
+void destroy_logger(shared_ptr<spdlog::logger> logger);
 
 void free_queue(moodycamel::ConcurrentQueue<tensors_struct *> &queue);
 

@@ -1,51 +1,56 @@
 def cli():
     import argparse
-    parser = argparse.ArgumentParser(description='Simplify any ONNX file')
-
-    parser.add_argument('--onnx-path', required=True, help='Path to the ONNX file')
+    parser = argparse.ArgumentParser(description='Convert ONNX model to TensorRT engine')
+    parser.add_argument('--input-path', required=True,
+                        help='Path to the input zip archive (must contain model.onnx + config.json; '
+                             'int8 also requires a calib/ directory of images)')
     parser.add_argument('--output-dir', required=True, help='Output directory')
     args = parser.parse_args()
 
-    onnx_path = args.onnx_path
-    output_dir = args.output_dir
-
-    from os import makedirs
-    from os.path import split, join
-    from .utils import simplify_onnx, md5_hash
+    import os
+    import tempfile
+    from .utils import unzip_input, validate_config, run_trtexec, build_int8_engine, md5_hash
     from .logger import Logs
 
     logs = Logs()
-    logs.add_message('Simplifying ONNX model',
-                     {'ONNX Path': onnx_path,
-                      'MD5': md5_hash(onnx_path)})
+    logs.add_message('Starting TensorRT conversion', {'input_path': args.input_path})
 
-    makedirs(output_dir, exist_ok=True)
+    os.makedirs(args.output_dir, exist_ok=True)
 
-    optimized_onnx_path = simplify_onnx(onnx_path, logs)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        onnx_path, config = unzip_input(args.input_path, tmp_dir)
 
-    new_onnx_filename = split(optimized_onnx_path)[1]
-    new_onnx_path = join(output_dir, new_onnx_filename)
-    logs_path = join(output_dir, 'logs.json')
+        logs.add_message('Input unpacked', {
+            'onnx_md5': md5_hash(onnx_path),
+            'config': config,
+        })
 
-    mime_type = 'application/x-onnx; device=cpu'
+        validate_config(config)
+        logs.add_message('Config validated', config)
 
-    # Copy optimized model and logs to the output directory
-    from shutil import copy
+        output_trt_path = os.path.join(args.output_dir, 'model.trt')
+
+        if config['precision'] == 'int8':
+            calib_dir = os.path.join(tmp_dir, config['calibration_data'].rstrip('/'))
+            if not os.path.isdir(calib_dir):
+                raise FileNotFoundError(
+                    f"Calibration directory '{config['calibration_data']}' "
+                    f"not found in zip archive")
+            build_int8_engine(onnx_path, output_trt_path, calib_dir, config, logs)
+        else:
+            run_trtexec(onnx_path, output_trt_path, config, logs)
+
+    mime_type = 'application/x-tensorrt'
+    logs_path = os.path.join(args.output_dir, 'logs.json')
+
+    logs.add_message('Successful Conversion', {
+        'Output Directory': args.output_dir,
+        'Output file name': 'model.trt',
+        'MIME type': mime_type,
+        'Output file MD5': md5_hash(output_trt_path),
+        'Logs file name': 'logs.json',
+    })
+
     logs.save_as_json(logs_path)
-    if optimized_onnx_path.strip() != new_onnx_path.strip():
-        copy(optimized_onnx_path, new_onnx_path)
-        
-    # Add message to logs
-    logs.add_message('Successful Conversion',
-                    {
-                        "Output Directory": output_dir,
-                        "Output file name": new_onnx_filename,
-                        "MIME type": mime_type,
-                        "Output file MD5": md5_hash(new_onnx_path),
-                        "Logs file name": "logs.json"
-                    }
-                    )
-
-    # Print logs to stdout
     print(logs)
     print('Exiting.')

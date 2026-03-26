@@ -1,14 +1,11 @@
-
 #ifndef RUNTIME_CORE_HPP
 #define RUNTIME_CORE_HPP
 
+extern "C" {
 #include "tensors_struct.h"
+}
 
-#ifdef _WIN32
-#define EXPOSE_FUNCTION __declspec(dllexport)
-#else
 #define EXPOSE_FUNCTION __attribute__((visibility("default")))
-#endif
 
 extern "C" EXPOSE_FUNCTION int runtime_initialization_with_args(int length, char **keys, void **values);
 

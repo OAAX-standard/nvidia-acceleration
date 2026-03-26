@@ -24,7 +24,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Install s3cmd
+      - name: Install dependencies
         run: |
           export DEBIAN_FRONTEND=noninteractive
           apt-get update -y
@@ -58,9 +58,12 @@ jobs:
           fi
           echo "version=$version" >> $GITHUB_ENV
 
-      - name: Upload Docker image to S3
+      - name: Upload toolchain image to S3
         run: |
-          s3cmd put "conversion-toolchain/artifacts/oaax-nvidia-toolchain.tar" "s3://oaax/conversion-toolchain/${{ env.version }}/NVIDIA/oaax-nvidia-toolchain.tar"
+          s3cmd put "conversion-toolchain/artifacts/oaax-nvidia-tensorrt-toolchain.tar" \
+            "s3://oaax/conversion-toolchain/${{ env.version }}/NVIDIA/oaax-nvidia-tensorrt-toolchain.tar"
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            s3cmd sync "s3://oaax/conversion-toolchain/${{ env.version }}/NVIDIA/oaax-nvidia-toolchain.tar" "s3://oaax/conversion-toolchain/latest/NVIDIA/oaax-nvidia-toolchain.tar"
+            s3cmd cp \
+              "s3://oaax/conversion-toolchain/${{ env.version }}/NVIDIA/oaax-nvidia-tensorrt-toolchain.tar" \
+              "s3://oaax/conversion-toolchain/latest/NVIDIA/oaax-nvidia-tensorrt-toolchain.tar"
           fi

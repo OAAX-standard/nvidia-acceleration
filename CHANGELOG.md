@@ -1,3 +1,12 @@
+# Version 2.0.0 (2026-03-26)
+- Replace ONNX Runtime + CUDA EP implementation with native TensorRT inference
+- Engines are now compiled ahead-of-time by the conversion toolchain (requires GPU at conversion time)
+- Runtime library no longer depends on ONNX Runtime; loads `.trt` engine files directly
+- Dropped Windows support (Linux x86_64, aarch64, aarch64-server only)
+- Dropped per-CUDA-version build variants; runtime bundles TensorRT 10 and CUDA 13
+- Added support for DGX Spark / Grace CPU (AARCH64_SERVER platform)
+- TRT and CUDA paths are external build parameters; no large binaries stored in the repo
+
 # Version 1.0.0 (2025-06-10)
 - Initial release of the OAAX Nvidia GPUs implementation.
 - Includes the OAAX runtime and conversion toolchain.

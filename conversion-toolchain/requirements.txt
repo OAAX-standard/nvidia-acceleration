@@ -1,5 +1,5 @@
 .
-lgg
+numpy
+Pillow
 onnx
-onnxsim
-onnxruntime
+pycuda
