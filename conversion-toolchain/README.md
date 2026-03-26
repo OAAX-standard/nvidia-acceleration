@@ -2,13 +2,26 @@
 
 Compiles an ONNX model into a TensorRT engine (`.trt`) optimised for a specific NVIDIA GPU architecture. The engine is produced at conversion time — TensorRT profiles and compiles kernels against real hardware, so a physical GPU is required when **running** the toolchain.
 
-Building the Docker image itself requires only Docker and does not need a GPU.
+## Build the toolchain image
 
-## Development machine setup
+**Requirements:** Linux, Docker.
 
-**To build the image:** Linux, Docker.
+**1. Install Docker**
+```bash
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER && newgrp docker
+```
 
-**To run a conversion:** Linux, NVIDIA GPU + driver, Docker, nvidia-container-toolkit.
+**2. Build**
+```bash
+bash build-toolchain.sh
+```
+
+Output: `artifacts/oaax-nvidia-tensorrt-toolchain.tar`
+
+## Run a conversion
+
+**Requirements:** Linux, NVIDIA GPU + driver, Docker, nvidia-container-toolkit.
 
 **1. Install the NVIDIA driver**
 ```bash
@@ -16,13 +29,7 @@ sudo apt-get install -y nvidia-driver-<version> && sudo reboot
 ```
 Verify: `nvidia-smi`
 
-**2. Install Docker**
-```bash
-curl -fsSL https://get.docker.com | sudo sh
-sudo usermod -aG docker $USER && newgrp docker
-```
-
-**3. Install nvidia-container-toolkit**
+**2. Install nvidia-container-toolkit**
 ```bash
 curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
   | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
@@ -34,17 +41,7 @@ sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart doc
 ```
 Verify: `docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi`
 
-## Build the image
-
-```bash
-bash build-toolchain.sh
-```
-
-Output: `artifacts/oaax-nvidia-tensorrt-toolchain.tar`
-
-## Run a conversion
-
-Prepare a zip archive:
+**3. Prepare a zip archive**
 
 ```
 bundle.zip
@@ -84,6 +81,7 @@ nvidia-smi --query-gpu=name,compute_cap --format=csv,noheader
 | 10.0 | `sm_100` | B100, B200 |
 | 12.1 | `sm_121` | DGX Spark (GB10) |
 
+**4. Run**
 ```bash
 docker run --rm --gpus all \
   -v /path/to/bundle.zip:/input/bundle.zip \

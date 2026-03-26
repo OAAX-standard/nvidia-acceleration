@@ -2,9 +2,9 @@
 
 C++ shared library (`libRuntimeLibrary.so`) that implements the OAAX C API using native TensorRT. It deserializes a `.trt` engine produced by the conversion toolchain and runs inference on an NVIDIA GPU.
 
-## Development machine setup
+## Build the runtime
 
-Cross-compilation runs on a Linux x86_64 machine. No GPU needed at build time.
+**Requirements:** Linux x86_64, CMake ≥ 3.14, cross-compilation toolchains, TensorRT and CUDA from [developer.nvidia.com](https://developer.nvidia.com). No GPU needed.
 
 **1. Install build tools**
 ```bash
@@ -24,7 +24,7 @@ sudo apt-get install -y cmake make git
 - **TensorRT**: download the Linux tar.gz archive from [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) and extract it. The directory must contain `include/` and `lib/`.
 - **CUDA Toolkit**: install from [developer.nvidia.com/cuda-downloads](https://developer.nvidia.com/cuda-downloads). For cross-compilation to aarch64, the CUDA install also provides target-specific directories under `targets/`.
 
-## Build
+**4. Build**
 
 ```bash
 # X86_64
@@ -63,11 +63,9 @@ build/X86_64/bin/
 └── libcudart.so.13           # bundled CUDA runtime
 ```
 
-The output directory is self-contained — deploy `bin/` as-is to the deployment machine.
+## Deploy the runtime
 
-## Deployment machine setup
-
-**Minimum requirements:**
+**Requirements:**
 
 | Requirement | Notes |
 |---|---|
@@ -76,7 +74,7 @@ The output directory is self-contained — deploy `bin/` as-is to the deployment
 | NVIDIA driver ≥ 525 | Required by TensorRT 10 |
 | glibc ≥ 2.17 | Satisfied by any modern Linux distribution |
 
-No separate TensorRT or CUDA installation is needed — the `bin/` directory bundles all required shared libraries.
+No separate TensorRT or CUDA installation is needed — the `bin/` directory bundles all required shared libraries. Copy it as-is to the deployment machine.
 
 **Install the NVIDIA driver:**
 ```bash
