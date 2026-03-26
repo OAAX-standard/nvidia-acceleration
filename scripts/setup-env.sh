@@ -5,12 +5,26 @@
 #
 # TensorRT archives must be downloaded manually before running this script.
 # Run scripts/unpack-trt.sh for instructions on which archives are needed.
+#
+# Usage: bash setup-env.sh [--force]
+#   --force   Ignore the setup cache and re-run all steps.
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DEPS_DIR="${REPO_ROOT}/.deps"
+STAMP_FILE="${DEPS_DIR}/.setup-complete"
+
+FORCE=false
+for arg in "$@"; do
+    [ "$arg" = "--force" ] && FORCE=true
+done
+
+if [ "$FORCE" = false ] && [ -f "$STAMP_FILE" ]; then
+    echo "Environment already set up (remove .deps/.setup-complete or use --force to re-run)."
+    exit 0
+fi
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
@@ -64,5 +78,6 @@ bash "${SCRIPT_DIR}/download-cuda.sh" --output "${DEPS_DIR}/cuda"
 echo "Unpacking TensorRT archives..."
 bash "${SCRIPT_DIR}/unpack-trt.sh"
 
+touch "$STAMP_FILE"
 echo ""
 echo "Environment setup complete. All dependencies are in .deps/"
