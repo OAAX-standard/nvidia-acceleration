@@ -13,7 +13,7 @@ VERSION=$(<"$VERSION_FILE")
 if [ -z "$PLATFORM" ]; then
     ARCH=$(uname -m)
     if [ "$ARCH" = "aarch64" ]; then
-        PLATFORM="AARCH64_SERVER"
+        PLATFORM="AARCH64_GLIBC2_38"
     else
         PLATFORM="X86_64"
     fi
@@ -49,8 +49,8 @@ if [ -z "$CUDA_DIR" ]; then
     echo "    https://developer.nvidia.com/cuda-downloads"
     echo ""
     echo "  For cross-compilation to aarch64, use the target-specific subdirectory:"
-    echo "    AARCH64:        CUDA_DIR=/usr/local/cuda/targets/aarch64-linux"
-    echo "    AARCH64_SERVER: CUDA_DIR=/usr/local/cuda/targets/sbsa-linux"
+    echo "    AARCH64_GLIBC2_34:        CUDA_DIR=/usr/local/cuda/targets/aarch64-linux"
+    echo "    AARCH64_GLIBC2_38: CUDA_DIR=/usr/local/cuda/targets/sbsa-linux"
     echo ""
     echo "  Example:"
     echo "    CUDA_DIR=/usr/local/cuda PLATFORM=X86_64 ./build-runtimes.sh"

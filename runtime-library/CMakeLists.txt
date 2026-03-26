@@ -4,10 +4,10 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_VERBOSE_MAKEFILE OFF)
 
 # === Platform Selection ===
-# Supported: X86_64, AARCH64 (Jetson / JetPack), AARCH64_SERVER (DGX Spark / Grace CPU)
+# Supported: X86_64, AARCH64_GLIBC2_34 (Jetson / JetPack), AARCH64_GLIBC2_38 (DGX Spark / Grace CPU)
 if(NOT DEFINED PLATFORM)
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
-        set(PLATFORM AARCH64_SERVER)
+        set(PLATFORM AARCH64_GLIBC2_38)
     else()
         set(PLATFORM X86_64)
     endif()
@@ -15,10 +15,10 @@ if(NOT DEFINED PLATFORM)
 endif()
 
 if(NOT PLATFORM STREQUAL "X86_64" AND
-   NOT PLATFORM STREQUAL "AARCH64" AND
-   NOT PLATFORM STREQUAL "AARCH64_SERVER")
+   NOT PLATFORM STREQUAL "AARCH64_GLIBC2_34" AND
+   NOT PLATFORM STREQUAL "AARCH64_GLIBC2_38")
     message(FATAL_ERROR
-        "PLATFORM must be X86_64, AARCH64, or AARCH64_SERVER. "
+        "PLATFORM must be X86_64, AARCH64_GLIBC2_34, or AARCH64_GLIBC2_38. "
         "Windows is not supported in the TensorRT-native runtime.")
 endif()
 
@@ -36,12 +36,12 @@ if(PLATFORM STREQUAL "X86_64")
     set(CROSS_ROOT "/opt/x86-64-v2--glibc--stable-2022.08-1")
     set(COMPILER_PREFIX "x86_64-linux-")
     set(PLATFORM_BUILD_FLAGS "-fno-math-errno -fopenmp -march=haswell")
-elseif(PLATFORM STREQUAL "AARCH64")
+elseif(PLATFORM STREQUAL "AARCH64_GLIBC2_34")
     set(CMAKE_SYSTEM_PROCESSOR aarch64)
     set(CROSS_ROOT "/opt/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu")
     set(COMPILER_PREFIX "aarch64-none-linux-gnu-")
     set(PLATFORM_BUILD_FLAGS "-fno-math-errno -fopenmp")
-elseif(PLATFORM STREQUAL "AARCH64_SERVER")
+elseif(PLATFORM STREQUAL "AARCH64_GLIBC2_38")
     set(CMAKE_SYSTEM_PROCESSOR aarch64)
     set(CROSS_ROOT "/opt/arm-gnu-toolchain-13.2.Rel1-x86_64-aarch64-none-linux-gnu")
     set(COMPILER_PREFIX "aarch64-none-linux-gnu-")
@@ -143,7 +143,7 @@ add_library(RuntimeLibrary SHARED ${SRC})
 
 target_link_options(RuntimeLibrary PRIVATE "-Wl,-z,noexecstack")
 
-# AARCH64 targets use empty stub .so files for linking (real libs on target machine).
+# AARCH64_GLIBC2_34 targets use empty stub .so files for linking (real libs on target machine).
 # --allow-shlib-undefined lets the linker accept stubs with no symbol definitions.
 if(NOT PLATFORM STREQUAL "X86_64")
     target_link_options(RuntimeLibrary PRIVATE "-Wl,--allow-shlib-undefined")

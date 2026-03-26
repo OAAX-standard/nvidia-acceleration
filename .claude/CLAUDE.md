@@ -34,7 +34,7 @@ nvidia-acceleration/
 ├── scripts/
 │   └── setup-env.sh                     # CI env setup: toolchains, TRT archives, CUDA
 ├── .github/workflows/
-│   ├── build-runtime.yml                # builds X86_64, AARCH64, AARCH64_SERVER; uploads to S3
+│   ├── build-runtime.yml                # builds X86_64, AARCH64_GLIBC2_34, AARCH64_GLIBC2_38; uploads to S3
 │   ├── build-toolchain.yml              # builds Docker image; uploads to S3
 │   └── delete-temporary-artifacts.yml   # cleans S3 on PR close
 └── VERSION                              # semver, read by build scripts
@@ -92,8 +92,8 @@ for (int i = 0; i < engine->getNbIOTensors(); i++)
 | PLATFORM | Target | Toolchain |
 |---|---|---|
 | `X86_64` | Linux x86_64 | `/opt/x86-64-v2--glibc--stable-2022.08-1` |
-| `AARCH64` | Jetson / JetPack | `/opt/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu` |
-| `AARCH64_SERVER` | DGX Spark / Grace | `/opt/arm-gnu-toolchain-13.2.Rel1-x86_64-aarch64-none-linux-gnu` |
+| `AARCH64_GLIBC2_34` | Jetson / JetPack | `/opt/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu` |
+| `AARCH64_GLIBC2_38` | DGX Spark / Grace | `/opt/arm-gnu-toolchain-13.2.Rel1-x86_64-aarch64-none-linux-gnu` |
 
 ### External Dependencies (not in repo)
 

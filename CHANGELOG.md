@@ -13,7 +13,7 @@ All notable changes to this project are documented here. Versions are listed new
 - TRT and CUDA are external build-time dependencies; no large binaries stored in the repo
 
 ### Added
-- Support for DGX Spark / Grace CPU (`AARCH64_SERVER` platform)
+- Support for DGX Spark / Grace CPU (`AARCH64_GLIBC2_38` platform)
 
 ### Removed
 - Windows support (Linux x86_64, aarch64, aarch64-server only)

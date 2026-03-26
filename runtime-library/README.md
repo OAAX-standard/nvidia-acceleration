@@ -16,8 +16,8 @@ sudo apt-get install -y cmake make git
 | Platform | Toolchain | Source |
 |---|---|---|
 | `X86_64` | `x86-64-v2--glibc--stable-2022.08-1` | [Bootlin](https://toolchains.bootlin.com) |
-| `AARCH64` | `gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu` | [Arm Developer](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) |
-| `AARCH64_SERVER` | `arm-gnu-toolchain-13.2.Rel1-x86_64-aarch64-none-linux-gnu` | [Arm Developer](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) |
+| `AARCH64_GLIBC2_34` | `gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu` | [Arm Developer](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) |
+| `AARCH64_GLIBC2_38` | `arm-gnu-toolchain-13.2.Rel1-x86_64-aarch64-none-linux-gnu` | [Arm Developer](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) |
 
 **3. Download TensorRT and CUDA from NVIDIA**
 
@@ -34,24 +34,24 @@ CUDA_VERSION=13 \
 PLATFORM=X86_64 \
 bash build-runtimes.sh
 
-# AARCH64 (Jetson / JetPack)
+# AARCH64_GLIBC2_34 (Jetson / JetPack)
 TRT_DIR=/path/to/TensorRT-10.x.y.z-aarch64 \
 CUDA_DIR=/usr/local/cuda/targets/aarch64-linux \
 CUDA_VERSION=13 \
-PLATFORM=AARCH64 \
+PLATFORM=AARCH64_GLIBC2_34 \
 bash build-runtimes.sh
 
-# AARCH64_SERVER (DGX Spark / Grace)
+# AARCH64_GLIBC2_38 (DGX Spark / Grace)
 TRT_DIR=/path/to/TensorRT-10.x.y.z-aarch64 \
 CUDA_DIR=/usr/local/cuda/targets/sbsa-linux \
 CUDA_VERSION=13 \
-PLATFORM=AARCH64_SERVER \
+PLATFORM=AARCH64_GLIBC2_38 \
 bash build-runtimes.sh
 ```
 
 | Variable | Default | Description |
 |---|---|---|
-| `PLATFORM` | auto-detected from `uname -m` | `X86_64`, `AARCH64`, or `AARCH64_SERVER` |
+| `PLATFORM` | auto-detected from `uname -m` | `X86_64`, `AARCH64_GLIBC2_34`, or `AARCH64_GLIBC2_38` |
 | `TRT_DIR` | *(required)* | Path to extracted TensorRT archive |
 | `CUDA_DIR` | *(required)* | Path to CUDA toolkit (or target-specific subdirectory) |
 | `CUDA_VERSION` | *(required)* | Major CUDA version (e.g. `12` or `13`) — used to name the output |

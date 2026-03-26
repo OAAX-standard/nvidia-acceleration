@@ -67,26 +67,26 @@ jobs:
           PLATFORM=X86_64 \
           bash runtime-library/build-runtimes.sh
 
-      - name: Build AARCH64 runtime
+      - name: Build AARCH64_GLIBC2_34 runtime
         run: |
           TRT_DIR=${{ env.TRT_DIR_AARCH64 }} \
           CUDA_DIR=${{ env.CUDA_ROOT }}/targets/aarch64-linux \
           CUDA_VERSION=${{ matrix.cuda_version }} \
-          PLATFORM=AARCH64 \
+          PLATFORM=AARCH64_GLIBC2_34 \
           bash runtime-library/build-runtimes.sh
 
-      - name: Build AARCH64_SERVER runtime
+      - name: Build AARCH64_GLIBC2_38 runtime
         run: |
           TRT_DIR=${{ env.TRT_DIR_AARCH64 }} \
           CUDA_DIR=${{ env.CUDA_ROOT }}/targets/sbsa-linux \
           CUDA_VERSION=${{ matrix.cuda_version }} \
-          PLATFORM=AARCH64_SERVER \
+          PLATFORM=AARCH64_GLIBC2_38 \
           bash runtime-library/build-runtimes.sh
 
       - name: Package artifacts
         run: |
           mkdir -p artifacts
-          for platform in X86_64 AARCH64 AARCH64_SERVER; do
+          for platform in X86_64 AARCH64_GLIBC2_34 AARCH64_GLIBC2_38; do
             tar czf "artifacts/runtime-library-${platform}-cuda${{ matrix.cuda_version }}.tar.gz" \
               -C "runtime-library/build/${platform}/cuda-${{ matrix.cuda_version }}" bin/
           done
@@ -114,9 +114,9 @@ jobs:
           cuda=${{ matrix.cuda_version }}
           s3cmd put "artifacts/runtime-library-X86_64-cuda${cuda}.tar.gz" \
             "s3://oaax/runtimes/${version}/NVIDIA/cuda-${cuda}/x86_64/Ubuntu/library.tar.gz"
-          s3cmd put "artifacts/runtime-library-AARCH64-cuda${cuda}.tar.gz" \
+          s3cmd put "artifacts/runtime-library-AARCH64_GLIBC2_34-cuda${cuda}.tar.gz" \
             "s3://oaax/runtimes/${version}/NVIDIA/cuda-${cuda}/aarch64/Ubuntu/library.tar.gz"
-          s3cmd put "artifacts/runtime-library-AARCH64_SERVER-cuda${cuda}.tar.gz" \
+          s3cmd put "artifacts/runtime-library-AARCH64_GLIBC2_38-cuda${cuda}.tar.gz" \
             "s3://oaax/runtimes/${version}/NVIDIA/cuda-${cuda}/aarch64-server/Ubuntu/library.tar.gz"
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             s3cmd sync "s3://oaax/runtimes/${version}/NVIDIA/" \

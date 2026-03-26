@@ -80,6 +80,7 @@ shared_ptr<spdlog::logger> initialize_logger(const string &log_file,
         spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [" + prefix + "] [%^%l%$] %v");
         logger->set_level(static_cast<spdlog::level::level_enum>(
             std::min(file_level, console_level)));
+        logger->flush_on(spdlog::level::info);
 
         return logger;
     }

@@ -23,12 +23,24 @@ An ONNX model is compiled into a TensorRT engine at conversion time, targeting t
 | Platform | Architecture | Typical hardware |
 |---|---|---|
 | `X86_64` | Linux x86_64 | Any x86 server or workstation with NVIDIA GPU |
-| `AARCH64` | Linux aarch64 | Jetson (JetPack 7.0+) |
-| `AARCH64_SERVER` | Linux aarch64 | DGX Spark, Grace-Hopper, Grace-based servers |
+| `AARCH64_GLIBC2_34` | Linux aarch64 | Jetson (JetPack 7.0+) |
+| `AARCH64_GLIBC2_38` | Linux aarch64 | DGX Spark, Grace-Hopper, Grace-based servers |
 
-## Target machine requirements
+## Development machine
 
-The runtime library output directory is self-contained. Deploying it to a target machine requires only:
+Two activities happen on the development machine: building the toolchain image and cross-compiling the runtime library. Running a model conversion also happens here and additionally requires a GPU.
+
+| Activity | Requirements |
+|---|---|
+| Build toolchain Docker image | Linux, Docker |
+| Run model conversion | Linux, NVIDIA GPU + driver, Docker, nvidia-container-toolkit |
+| Cross-compile runtime library | Linux x86_64, CMake ≥ 3.14, cross-compilation toolchains, TensorRT and CUDA from [developer.nvidia.com](https://developer.nvidia.com) |
+
+See each component's README for full setup instructions.
+
+## Deployment machine
+
+The runtime library output is self-contained — the `bin/` directory bundles all required shared libraries. No TensorRT or CUDA installation is needed on the deployment machine.
 
 | Requirement | Notes |
 |---|---|
@@ -36,18 +48,3 @@ The runtime library output directory is self-contained. Deploying it to a target
 | NVIDIA GPU | Must match the `gpu_architecture` used at conversion time |
 | NVIDIA driver ≥ 525 | Required by TensorRT 10 |
 | glibc ≥ 2.17 | Satisfied by any modern Linux distribution |
-
-No separate TensorRT or CUDA installation is needed on the target — the runtime bundles all required shared libraries.
-
-## Development environment
-
-The **conversion toolchain** build machine only needs Docker to build the image. A GPU is required on the machine that **runs** the toolchain to convert a model:
-- Linux (x86_64), Docker (image build only)
-- Linux, NVIDIA GPU + driver, nvidia-container-toolkit (model conversion)
-
-The **runtime library** build machine is GPU-free (cross-compilation):
-- Linux x86_64, CMake ≥ 3.14, platform-specific cross-compilation toolchains
-- TensorRT Linux tar archive — download from [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt)
-- CUDA Toolkit — download from [developer.nvidia.com/cuda-downloads](https://developer.nvidia.com/cuda-downloads)
-
-See each component's README for full setup and build instructions.
