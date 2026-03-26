@@ -2,7 +2,7 @@ set -e
 
 cd "$(dirname "$0")"
 
-VERSION_FILE="../../VERSION"
+VERSION_FILE="../VERSION"
 if [ ! -f "$VERSION_FILE" ]; then
     echo "Version file not found: $VERSION_FILE"
     exit 1
@@ -95,7 +95,7 @@ cmake \
     -DTRT_DIR="$TRT_DIR" \
     -DCUDA_DIR="$CUDA_DIR" \
     $MARCH_CMAKE_ARG \
-    ../..
+    ../../../..
 
 make -j"$(nproc)"
 
