@@ -1,15 +1,21 @@
 #!/bin/bash
 # Unpacks TensorRT archives from tensorrt-archives/ into .deps/tensorrt/.
 #
-# Download the following archives from https://developer.nvidia.com/tensorrt/download/10x
-# and place them in tensorrt-archives/ before running this script:
+# Download the following archives and place them in tensorrt-archives/:
 #
-#   TensorRT 10.16.0 GA for Linux x86_64 and CUDA 12.0 to 12.9 TAR Package
-#   TensorRT 10.16.0 GA for Linux x86_64 and CUDA 13.0 to 13.2 TAR Package
-#   TensorRT 10.16.0 GA for Linux SBSA and CUDA 13.2 TAR Package
+#   From https://developer.nvidia.com/tensorrt/download/10x
+#     TensorRT 10.16.0 GA for Linux x86_64 and CUDA 12.0 to 12.9 TAR Package
+#     TensorRT 10.16.0 GA for Linux x86_64 and CUDA 13.0 to 13.2 TAR Package
+#     TensorRT 10.16.0 GA for Linux SBSA and CUDA 13.2 TAR Package
+#
+#   From https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.7.0/tars/
+#     TensorRT-10.7.0.23.l4t.aarch64-gnu.cuda-12.6.tar.gz   (Jetson / AARCH64_GLIBC2_34)
+#     TensorRT-10.7.0.23.Linux.aarch64-gnu.cuda-12.6.tar.gz  (SBSA / AARCH64_GLIBC2_38 + CUDA 12)
 #
 # Output:
 #   .deps/tensorrt/cuda-12/x86_64/
+#   .deps/tensorrt/cuda-12/aarch64-linux/
+#   .deps/tensorrt/cuda-12/sbsa-linux/
 #   .deps/tensorrt/cuda-13/x86_64/
 #   .deps/tensorrt/cuda-13/sbsa-linux/
 
@@ -24,9 +30,11 @@ DOWNLOAD_URL="https://developer.nvidia.com/tensorrt/download/10x"
 
 # Each entry: "glob_pattern|dest_subdir|description"
 TARGETS=(
-    "TensorRT-*.Linux.x86_64*.cuda-12*.tar.gz|cuda-12/x86_64|TensorRT 10.16.0 GA for Linux x86_64 and CUDA 12.0 to 12.9 TAR Package"
-    "TensorRT-*.Linux.x86_64*.cuda-13*.tar.gz|cuda-13/x86_64|TensorRT 10.16.0 GA for Linux x86_64 and CUDA 13.0 to 13.2 TAR Package"
-    "TensorRT-*.Linux.aarch64*.cuda-13*.tar.gz|cuda-13/sbsa-linux|TensorRT 10.16.0 GA for Linux SBSA and CUDA 13.2 TAR Package"
+    "TensorRT-*.Linux.x86_64*.cuda-12*.tar.gz|cuda-12/x86_64|TensorRT 10.16.0 GA for Linux x86_64 and CUDA 12.0 to 12.9 TAR Package — https://developer.nvidia.com/tensorrt/download/10x"
+    "TensorRT-*.Linux.x86_64*.cuda-13*.tar.gz|cuda-13/x86_64|TensorRT 10.16.0 GA for Linux x86_64 and CUDA 13.0 to 13.2 TAR Package — https://developer.nvidia.com/tensorrt/download/10x"
+    "TensorRT-*.Linux.aarch64*.cuda-13*.tar.gz|cuda-13/sbsa-linux|TensorRT 10.16.0 GA for Linux SBSA and CUDA 13.2 TAR Package — https://developer.nvidia.com/tensorrt/download/10x"
+    "TensorRT-*.l4t.aarch64*.cuda-12*.tar.gz|cuda-12/aarch64-linux|TensorRT-10.7.0.23.l4t.aarch64-gnu.cuda-12.6.tar.gz — https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.7.0/tars/"
+    "TensorRT-*.Linux.aarch64*.cuda-12*.tar.gz|cuda-12/sbsa-linux|TensorRT-10.7.0.23.Linux.aarch64-gnu.cuda-12.6.tar.gz — https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.7.0/tars/"
 )
 
 if [ ! -d "$ARCHIVES_DIR" ]; then

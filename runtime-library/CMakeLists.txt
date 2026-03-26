@@ -109,27 +109,6 @@ endif()
 message(STATUS "TRT_DIR=${TRT_DIR}")
 message(STATUS "CUDA_DIR=${CUDA_DIR}")
 
-# AARCH64_GLIBC2_34 (Jetson): no aarch64 TRT tar package exists for CUDA 12 —
-# TRT ships with JetPack and is pre-installed on target. Generate empty aarch64
-# stub .so files so the cross-linker can produce the shared lib without errors.
-# Real symbols are resolved at runtime on the target machine.
-if(PLATFORM STREQUAL "AARCH64_GLIBC2_34")
-    set(STUB_DIR "${CMAKE_BINARY_DIR}/stubs")
-    file(MAKE_DIRECTORY "${STUB_DIR}")
-    file(WRITE "${STUB_DIR}/empty.c" "")
-    foreach(lib nvinfer nvinfer_plugin)
-        set(stub "${STUB_DIR}/lib${lib}.so")
-        if(NOT EXISTS "${stub}")
-            execute_process(
-                COMMAND ${CMAKE_C_COMPILER} -shared -nostdlib -o "${stub}" "${STUB_DIR}/empty.c"
-                RESULT_VARIABLE result)
-            if(NOT result EQUAL 0)
-                message(FATAL_ERROR "Failed to generate stub lib${lib}.so for AARCH64_GLIBC2_34")
-            endif()
-        endif()
-    endforeach()
-    set(TRT_LIB_DIR "${STUB_DIR}")
-endif()
 
 # === Compiler flags ===
 set(BUILD_FLAGS "${PLATFORM_BUILD_FLAGS}")

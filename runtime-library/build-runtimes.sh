@@ -14,12 +14,13 @@ VERSION=$(<"$VERSION_FILE")
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 
 # Full build matrix: "PLATFORM:CUDA_VERSION:march1 march2 ..."
-# AARCH64_GLIBC2_34 (Jetson) only supports CUDA 12 — no linux-aarch64 in CUDA 13 redistrib.
-# AARCH64_GLIBC2_38 (DGX Spark/Grace) only has TRT for CUDA 13.
+# AARCH64_GLIBC2_34 (Jetson): CUDA 12 only — no linux-aarch64 in CUDA 13 redistrib.
+# AARCH64_GLIBC2_38 (DGX Spark/Grace): CUDA 12 and 13 both have SBSA TRT packages.
 MATRIX=(
     "X86_64:12:x86-64 x86-64-v3 x86-64-v4"
     "X86_64:13:x86-64 x86-64-v3 x86-64-v4"
     "AARCH64_GLIBC2_34:12:armv8-a armv8.2-a+fp16+dotprod"
+    "AARCH64_GLIBC2_38:12:armv8-a armv9-a"
     "AARCH64_GLIBC2_38:13:armv8-a armv9-a"
 )
 
@@ -42,7 +43,7 @@ if [ -z "$TRT_DIR" ]; then
     if [ -n "$CUDA_VERSION" ]; then
         case "$PLATFORM" in
             X86_64)             trt_platform="x86_64" ;;
-            AARCH64_GLIBC2_34)  trt_platform="x86_64" ;;  # Jetson uses x86_64 TRT libs for cross
+            AARCH64_GLIBC2_34)  trt_platform="aarch64-linux" ;;
             AARCH64_GLIBC2_38)  trt_platform="sbsa-linux" ;;
         esac
         TRT_DIR="${DEPS_DIR}/tensorrt/cuda-${CUDA_VERSION}/${trt_platform}"
