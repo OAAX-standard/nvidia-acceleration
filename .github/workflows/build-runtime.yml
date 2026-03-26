@@ -18,6 +18,10 @@ jobs:
       image: ubuntu:22.04
       options: --volume /var/run/docker.sock:/var/run/docker.sock
 
+    strategy:
+      matrix:
+        cuda_version: ["12", "13"]
+
     steps:
       - name: Set up Docker image
         run: |
@@ -33,13 +37,18 @@ jobs:
 
       - name: Set up environment
         run: bash scripts/setup-env.sh
-        env:
-          # Paths to pre-installed TensorRT and CUDA on the runner.
-          # TensorRT must be downloaded from https://developer.nvidia.com/tensorrt
-          # CUDA must be installed from https://developer.nvidia.com/cuda-downloads
-          TRT_DIR_X86: ${{ secrets.TRT_DIR_X86 }}
-          TRT_DIR_AARCH64: ${{ secrets.TRT_DIR_AARCH64 }}
-          CUDA_ROOT: ${{ secrets.CUDA_ROOT }}
+
+      - name: Set CUDA paths
+        run: |
+          if [ "${{ matrix.cuda_version }}" = "12" ]; then
+            echo "TRT_DIR_X86=${{ secrets.TRT_DIR_X86_CUDA12 }}" >> $GITHUB_ENV
+            echo "TRT_DIR_AARCH64=${{ secrets.TRT_DIR_AARCH64_CUDA12 }}" >> $GITHUB_ENV
+            echo "CUDA_ROOT=${{ secrets.CUDA_ROOT_12 }}" >> $GITHUB_ENV
+          elif [ "${{ matrix.cuda_version }}" = "13" ]; then
+            echo "TRT_DIR_X86=${{ secrets.TRT_DIR_X86_CUDA13 }}" >> $GITHUB_ENV
+            echo "TRT_DIR_AARCH64=${{ secrets.TRT_DIR_AARCH64_CUDA13 }}" >> $GITHUB_ENV
+            echo "CUDA_ROOT=${{ secrets.CUDA_ROOT_13 }}" >> $GITHUB_ENV
+          fi
 
       - name: Determine version
         run: |
@@ -52,22 +61,25 @@ jobs:
 
       - name: Build X86_64 runtime
         run: |
-          TRT_DIR=${{ secrets.TRT_DIR_X86 }} \
-          CUDA_DIR=${{ secrets.CUDA_ROOT }} \
+          TRT_DIR=${{ env.TRT_DIR_X86 }} \
+          CUDA_DIR=${{ env.CUDA_ROOT }} \
+          CUDA_VERSION=${{ matrix.cuda_version }} \
           PLATFORM=X86_64 \
           bash runtime-library/build-runtimes.sh
 
       - name: Build AARCH64 runtime
         run: |
-          TRT_DIR=${{ secrets.TRT_DIR_AARCH64 }} \
-          CUDA_DIR=${{ secrets.CUDA_ROOT }}/targets/aarch64-linux \
+          TRT_DIR=${{ env.TRT_DIR_AARCH64 }} \
+          CUDA_DIR=${{ env.CUDA_ROOT }}/targets/aarch64-linux \
+          CUDA_VERSION=${{ matrix.cuda_version }} \
           PLATFORM=AARCH64 \
           bash runtime-library/build-runtimes.sh
 
       - name: Build AARCH64_SERVER runtime
         run: |
-          TRT_DIR=${{ secrets.TRT_DIR_AARCH64 }} \
-          CUDA_DIR=${{ secrets.CUDA_ROOT }}/targets/sbsa-linux \
+          TRT_DIR=${{ env.TRT_DIR_AARCH64 }} \
+          CUDA_DIR=${{ env.CUDA_ROOT }}/targets/sbsa-linux \
+          CUDA_VERSION=${{ matrix.cuda_version }} \
           PLATFORM=AARCH64_SERVER \
           bash runtime-library/build-runtimes.sh
 
@@ -75,11 +87,11 @@ jobs:
         run: |
           mkdir -p artifacts
           for platform in X86_64 AARCH64 AARCH64_SERVER; do
-            tar czf "artifacts/runtime-library-${platform}.tar.gz" \
-              -C "runtime-library/build/${platform}" bin/
+            tar czf "artifacts/runtime-library-${platform}-cuda${{ matrix.cuda_version }}.tar.gz" \
+              -C "runtime-library/build/${platform}/cuda-${{ matrix.cuda_version }}" bin/
           done
 
-      - name: Install s3cmd
+      - name: Install dependencies
         run: |
           export DEBIAN_FRONTEND=noninteractive
           apt-get install -y s3cmd
@@ -99,12 +111,13 @@ jobs:
       - name: Upload runtimes to S3
         run: |
           version=${{ env.version }}
-          s3cmd put "artifacts/runtime-library-X86_64.tar.gz" \
-            "s3://oaax/runtimes/${version}/NVIDIA/x86_64/Ubuntu/library.tar.gz"
-          s3cmd put "artifacts/runtime-library-AARCH64.tar.gz" \
-            "s3://oaax/runtimes/${version}/NVIDIA/aarch64/Ubuntu/library.tar.gz"
-          s3cmd put "artifacts/runtime-library-AARCH64_SERVER.tar.gz" \
-            "s3://oaax/runtimes/${version}/NVIDIA/aarch64-server/Ubuntu/library.tar.gz"
+          cuda=${{ matrix.cuda_version }}
+          s3cmd put "artifacts/runtime-library-X86_64-cuda${cuda}.tar.gz" \
+            "s3://oaax/runtimes/${version}/NVIDIA/cuda-${cuda}/x86_64/Ubuntu/library.tar.gz"
+          s3cmd put "artifacts/runtime-library-AARCH64-cuda${cuda}.tar.gz" \
+            "s3://oaax/runtimes/${version}/NVIDIA/cuda-${cuda}/aarch64/Ubuntu/library.tar.gz"
+          s3cmd put "artifacts/runtime-library-AARCH64_SERVER-cuda${cuda}.tar.gz" \
+            "s3://oaax/runtimes/${version}/NVIDIA/cuda-${cuda}/aarch64-server/Ubuntu/library.tar.gz"
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             s3cmd sync "s3://oaax/runtimes/${version}/NVIDIA/" \
                        "s3://oaax/runtimes/latest/NVIDIA/"

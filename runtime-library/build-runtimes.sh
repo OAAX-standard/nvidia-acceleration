@@ -64,11 +64,20 @@ if [ ! -d "$CUDA_DIR/include" ]; then
     exit 1
 fi
 
+if [ -z "$CUDA_VERSION" ]; then
+    echo "Error: CUDA_VERSION is not set."
+    echo ""
+    echo "  Set CUDA_VERSION to the major version of the CUDA toolkit pointed to by CUDA_DIR."
+    echo "  Example: CUDA_VERSION=12 or CUDA_VERSION=13"
+    exit 1
+fi
+
 echo "Building: PLATFORM=$PLATFORM  VERSION=$VERSION  BUILD_TYPE=$BUILD_TYPE"
+echo "          CUDA_VERSION=$CUDA_VERSION"
 echo "          TRT_DIR=$TRT_DIR"
 echo "          CUDA_DIR=$CUDA_DIR"
 
-BUILD_DIR="build/${PLATFORM}"
+BUILD_DIR="build/${PLATFORM}/cuda-${CUDA_VERSION}"
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
@@ -83,4 +92,4 @@ cmake \
 
 make -j"$(nproc)"
 
-echo "Build complete. Output: ${BUILD_DIR}/bin/"
+echo "Build complete. Output: runtime-library/${BUILD_DIR}/bin/"

@@ -40,62 +40,23 @@ rm /tmp/cmake-install.sh
 ln -fs /opt/cmake-3.31.7/bin/* /usr/local/bin
 
 # ── TensorRT and CUDA ─────────────────────────────────────────────────────────
-# TensorRT and CUDA must be installed manually before running builds.
+# TensorRT and CUDA must be installed manually on the runner before building.
 # They must be downloaded directly from NVIDIA:
 #
 #   TensorRT: https://developer.nvidia.com/tensorrt
 #     - Download the Linux tar.gz archive for your platform (x86_64 and/or aarch64)
-#     - Extract to a directory and set TRT_DIR to that path
-#     - The directory must contain include/ and lib/
+#     - Extract to a directory; the directory must contain include/ and lib/
 #
 #   CUDA Toolkit: https://developer.nvidia.com/cuda-downloads
-#     - Install the CUDA toolkit for your host platform
+#     - Install the CUDA toolkit for the host platform
 #     - For cross-compilation to aarch64, also install the cross-compilation packages
-#       (targets/aarch64-linux/ and targets/sbsa-linux/ under the CUDA install root)
-#     - Set CUDA_DIR to the appropriate target directory
+#       so that targets/aarch64-linux/ and targets/sbsa-linux/ exist under the CUDA root
 #
-# Expected paths per platform:
-#   X86_64:        TRT_DIR=<trt-x86_64>/  CUDA_DIR=/usr/local/cuda
-#   AARCH64:       TRT_DIR=<trt-aarch64>/ CUDA_DIR=/usr/local/cuda/targets/aarch64-linux
-#   AARCH64_SERVER:TRT_DIR=<trt-aarch64>/ CUDA_DIR=/usr/local/cuda/targets/sbsa-linux
+# In CI, set the following secrets per CUDA version:
+#   TRT_DIR_X86_CUDA12, TRT_DIR_X86_CUDA13
+#   TRT_DIR_AARCH64_CUDA12, TRT_DIR_AARCH64_CUDA13
+#   CUDA_ROOT_12, CUDA_ROOT_13
 #
-# In CI, set TRT_DIR_X86, TRT_DIR_AARCH64, and CUDA_ROOT as environment variables
-# or GitHub Actions secrets pointing to where you have installed these packages.
+# TRT_DIR and CUDA_DIR are validated by build-runtimes.sh at build time.
 
-ok=true
-
-if [ -z "$TRT_DIR_X86" ] || [ ! -d "$TRT_DIR_X86/lib" ]; then
-    echo ""
-    echo "WARNING: TRT_DIR_X86 is not set or invalid."
-    echo "  Download the TensorRT Linux x86_64 tar.gz from:"
-    echo "    https://developer.nvidia.com/tensorrt"
-    echo "  Extract it and set TRT_DIR_X86 to the extracted directory."
-    ok=false
-fi
-
-if [ -z "$TRT_DIR_AARCH64" ] || [ ! -d "$TRT_DIR_AARCH64/lib" ]; then
-    echo ""
-    echo "WARNING: TRT_DIR_AARCH64 is not set or invalid."
-    echo "  Download the TensorRT Linux aarch64 tar.gz from:"
-    echo "    https://developer.nvidia.com/tensorrt"
-    echo "  Extract it and set TRT_DIR_AARCH64 to the extracted directory."
-    ok=false
-fi
-
-if [ -z "$CUDA_ROOT" ] || [ ! -d "$CUDA_ROOT/include" ]; then
-    echo ""
-    echo "WARNING: CUDA_ROOT is not set or invalid."
-    echo "  Download and install the CUDA Toolkit from:"
-    echo "    https://developer.nvidia.com/cuda-downloads"
-    echo "  Set CUDA_ROOT to the CUDA installation root (e.g. /usr/local/cuda)."
-    ok=false
-fi
-
-if [ "$ok" = false ]; then
-    echo ""
-    echo "Build will fail until the above dependencies are installed."
-    echo "Re-run this script or set the variables before building."
-    exit 1
-fi
-
-echo "TensorRT and CUDA dependencies found. Ready to build."
+echo "Environment setup complete. TensorRT and CUDA paths are validated per build."

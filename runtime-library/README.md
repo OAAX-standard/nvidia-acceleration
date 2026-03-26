@@ -30,18 +30,21 @@ sudo apt-get install -y cmake make git
 # X86_64
 TRT_DIR=/path/to/TensorRT-10.x.y.z-x86_64 \
 CUDA_DIR=/usr/local/cuda \
+CUDA_VERSION=13 \
 PLATFORM=X86_64 \
 bash build-runtimes.sh
 
 # AARCH64 (Jetson / JetPack)
 TRT_DIR=/path/to/TensorRT-10.x.y.z-aarch64 \
 CUDA_DIR=/usr/local/cuda/targets/aarch64-linux \
+CUDA_VERSION=13 \
 PLATFORM=AARCH64 \
 bash build-runtimes.sh
 
 # AARCH64_SERVER (DGX Spark / Grace)
 TRT_DIR=/path/to/TensorRT-10.x.y.z-aarch64 \
 CUDA_DIR=/usr/local/cuda/targets/sbsa-linux \
+CUDA_VERSION=13 \
 PLATFORM=AARCH64_SERVER \
 bash build-runtimes.sh
 ```
@@ -51,12 +54,13 @@ bash build-runtimes.sh
 | `PLATFORM` | auto-detected from `uname -m` | `X86_64`, `AARCH64`, or `AARCH64_SERVER` |
 | `TRT_DIR` | *(required)* | Path to extracted TensorRT archive |
 | `CUDA_DIR` | *(required)* | Path to CUDA toolkit (or target-specific subdirectory) |
+| `CUDA_VERSION` | *(required)* | Major CUDA version (e.g. `12` or `13`) — used to name the output |
 | `BUILD_TYPE` | `Release` | `Release`, `Debug`, `RelWithDebInfo` |
 
-Output: `build/<PLATFORM>/bin/`
+Output: `build/<PLATFORM>/cuda-<CUDA_VERSION>/bin/`
 
 ```
-build/X86_64/bin/
+build/X86_64/cuda-13/bin/
 ├── libRuntimeLibrary.so      # OAAX runtime
 ├── libnvinfer.so.10          # }
 ├── libnvinfer_plugin.so.10   # } bundled TRT libs
@@ -88,7 +92,7 @@ A standalone C test is provided in `test/test_runtime.c`. It exercises the full 
 
 ```bash
 docker run --rm --gpus all \
-  -v $(pwd)/build/X86_64/bin:/runtime_lib \
+  -v $(pwd)/build/X86_64/cuda-13/bin:/runtime_lib \
   -v $(pwd)/test/test_runtime.c:/tmp/test_runtime.c \
   -v /path/to/model.trt:/tmp/model.trt \
   --entrypoint bash \
