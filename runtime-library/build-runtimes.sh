@@ -22,18 +22,45 @@ fi
 
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 
-# TRT_DIR: path to TensorRT installation (e.g. TensorRT-10.x.y.z/ from the archive)
-# CUDA_DIR: path to CUDA toolkit (e.g. /usr/local/cuda or /opt/cuda-13.0)
 if [ -z "$TRT_DIR" ]; then
     echo "Error: TRT_DIR is not set."
-    echo "  Set it to the extracted TensorRT archive directory (must contain include/ and lib/)."
-    echo "  Example: TRT_DIR=/opt/TensorRT-10.16.0.72 PLATFORM=X86_64 ./build-runtimes.sh"
+    echo ""
+    echo "  TRT_DIR must point to an extracted TensorRT archive (contains include/ and lib/)."
+    echo "  Download the Linux tar.gz for your platform from the NVIDIA developer portal:"
+    echo "    https://developer.nvidia.com/tensorrt"
+    echo ""
+    echo "  Example:"
+    echo "    TRT_DIR=/opt/TensorRT-10.16.0.72-x86_64 PLATFORM=X86_64 ./build-runtimes.sh"
     exit 1
 fi
+
+if [ ! -d "$TRT_DIR/include" ] || [ ! -d "$TRT_DIR/lib" ]; then
+    echo "Error: TRT_DIR=$TRT_DIR does not look like a valid TensorRT directory."
+    echo "  Expected include/ and lib/ subdirectories."
+    echo "  Download from: https://developer.nvidia.com/tensorrt"
+    exit 1
+fi
+
 if [ -z "$CUDA_DIR" ]; then
     echo "Error: CUDA_DIR is not set."
-    echo "  Set it to the CUDA toolkit directory (must contain include/ and lib/ or lib64/)."
-    echo "  Example: CUDA_DIR=/usr/local/cuda PLATFORM=X86_64 ./build-runtimes.sh"
+    echo ""
+    echo "  CUDA_DIR must point to a CUDA toolkit directory (contains include/ and lib/ or lib64/)."
+    echo "  Download and install the CUDA Toolkit from:"
+    echo "    https://developer.nvidia.com/cuda-downloads"
+    echo ""
+    echo "  For cross-compilation to aarch64, use the target-specific subdirectory:"
+    echo "    AARCH64:        CUDA_DIR=/usr/local/cuda/targets/aarch64-linux"
+    echo "    AARCH64_SERVER: CUDA_DIR=/usr/local/cuda/targets/sbsa-linux"
+    echo ""
+    echo "  Example:"
+    echo "    CUDA_DIR=/usr/local/cuda PLATFORM=X86_64 ./build-runtimes.sh"
+    exit 1
+fi
+
+if [ ! -d "$CUDA_DIR/include" ]; then
+    echo "Error: CUDA_DIR=$CUDA_DIR does not look like a valid CUDA directory."
+    echo "  Expected an include/ subdirectory."
+    echo "  Download from: https://developer.nvidia.com/cuda-downloads"
     exit 1
 fi
 

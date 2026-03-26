@@ -33,6 +33,13 @@ jobs:
 
       - name: Set up environment
         run: bash scripts/setup-env.sh
+        env:
+          # Paths to pre-installed TensorRT and CUDA on the runner.
+          # TensorRT must be downloaded from https://developer.nvidia.com/tensorrt
+          # CUDA must be installed from https://developer.nvidia.com/cuda-downloads
+          TRT_DIR_X86: ${{ secrets.TRT_DIR_X86 }}
+          TRT_DIR_AARCH64: ${{ secrets.TRT_DIR_AARCH64 }}
+          CUDA_ROOT: ${{ secrets.CUDA_ROOT }}
 
       - name: Determine version
         run: |
@@ -45,22 +52,22 @@ jobs:
 
       - name: Build X86_64 runtime
         run: |
-          TRT_DIR=/opt/TensorRT-x86_64 \
-          CUDA_DIR=/usr/local/cuda-13.2 \
+          TRT_DIR=${{ secrets.TRT_DIR_X86 }} \
+          CUDA_DIR=${{ secrets.CUDA_ROOT }} \
           PLATFORM=X86_64 \
           bash runtime-library/build-runtimes.sh
 
       - name: Build AARCH64 runtime
         run: |
-          TRT_DIR=/opt/TensorRT-aarch64 \
-          CUDA_DIR=/usr/local/cuda-13.2/targets/aarch64-linux \
+          TRT_DIR=${{ secrets.TRT_DIR_AARCH64 }} \
+          CUDA_DIR=${{ secrets.CUDA_ROOT }}/targets/aarch64-linux \
           PLATFORM=AARCH64 \
           bash runtime-library/build-runtimes.sh
 
       - name: Build AARCH64_SERVER runtime
         run: |
-          TRT_DIR=/opt/TensorRT-aarch64 \
-          CUDA_DIR=/usr/local/cuda-13.2/targets/sbsa-linux \
+          TRT_DIR=${{ secrets.TRT_DIR_AARCH64 }} \
+          CUDA_DIR=${{ secrets.CUDA_ROOT }}/targets/sbsa-linux \
           PLATFORM=AARCH64_SERVER \
           bash runtime-library/build-runtimes.sh
 
