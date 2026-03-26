@@ -97,17 +97,17 @@ jobs:
           mkdir -p artifacts
           cuda=${{ matrix.cuda_version }}
           pack() {
-            local platform=$1 arch=$2 march=$3
+            local platform=$1 march=$2
             tar czf "artifacts/runtime-${platform}-${march}-cuda${cuda}.tar.gz" \
               -C "runtime-library/build/${platform}/cuda-${cuda}/${march}" bin/
           }
-          pack X86_64             x86_64         x86-64
-          pack X86_64             x86_64         x86-64-v3
-          pack X86_64             x86_64         x86-64-v4
-          pack AARCH64_GLIBC2_34  aarch64        armv8-a
-          pack AARCH64_GLIBC2_34  aarch64        armv8.2-a+fp16+dotprod
-          pack AARCH64_GLIBC2_38  aarch64-server armv8-a
-          pack AARCH64_GLIBC2_38  aarch64-server armv9-a
+          pack X86_64            x86-64
+          pack X86_64            x86-64-v3
+          pack X86_64            x86-64-v4
+          pack AARCH64_GLIBC2_34 armv8-a
+          pack AARCH64_GLIBC2_34 armv8.2-a+fp16+dotprod
+          pack AARCH64_GLIBC2_38 armv8-a
+          pack AARCH64_GLIBC2_38 armv9-a
 
       - name: Install dependencies
         run: |
