@@ -106,7 +106,7 @@ for (int i = 0; i < engine->getNbIOTensors(); i++)
 
 ### CI Artifacts (S3)
 
-- Runtime: `s3://oaax/runtimes/<version>/NVIDIA/{x86_64,aarch64,aarch64-server}/Ubuntu/library.tar.gz`
+- Runtime: `s3://oaax/runtimes/<version>/NVIDIA/<arch>/<march>/Ubuntu/<libc>/library-cuda_<N>.tar.gz`
 - Toolchain: `s3://oaax/conversion-toolchain/<version>/NVIDIA/oaax-nvidia-tensorrt-toolchain.tar`
 
 ---
