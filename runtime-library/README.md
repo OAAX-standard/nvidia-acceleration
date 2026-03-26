@@ -2,7 +2,7 @@
 
 C++ shared library (`libRuntimeLibrary.so`) that implements the OAAX C API using native TensorRT. It deserializes a `.trt` engine produced by the conversion toolchain and runs inference on an NVIDIA GPU.
 
-## Host machine setup (build machine)
+## Development machine setup
 
 Cross-compilation runs on a Linux x86_64 machine. No GPU needed at build time.
 
@@ -63,9 +63,9 @@ build/X86_64/bin/
 └── libcudart.so.13           # bundled CUDA runtime
 ```
 
-The output directory is self-contained — deploy `bin/` as-is to the target machine.
+The output directory is self-contained — deploy `bin/` as-is to the deployment machine.
 
-## Target machine setup
+## Deployment machine setup
 
 **Minimum requirements:**
 

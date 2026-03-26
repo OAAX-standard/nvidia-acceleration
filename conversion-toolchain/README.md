@@ -4,7 +4,7 @@ Compiles an ONNX model into a TensorRT engine (`.trt`) optimised for a specific 
 
 Building the Docker image itself requires only Docker and does not need a GPU.
 
-## Host machine setup
+## Development machine setup
 
 **To build the image:** Linux, Docker.
 
