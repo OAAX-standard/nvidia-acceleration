@@ -11,25 +11,30 @@ if [ ! -f "$VERSION_FILE" ]; then
 fi
 VERSION=$(<"$VERSION_FILE")
 
-# Auto-detect platform if not provided
-if [ -z "$PLATFORM" ]; then
-    ARCH=$(uname -m)
-    if [ "$ARCH" = "aarch64" ]; then
-        PLATFORM="AARCH64_GLIBC2_38"
-    else
-        PLATFORM="X86_64"
-    fi
-    echo "Auto-detected PLATFORM=$PLATFORM"
-fi
-
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 
-if [ -z "$CUDA_VERSION" ]; then
-    echo "Error: CUDA_VERSION is not set."
-    echo ""
-    echo "  Set CUDA_VERSION to the major version of the CUDA toolkit."
-    echo "  Example: CUDA_VERSION=12 or CUDA_VERSION=13"
-    exit 1
+# Full build matrix: "PLATFORM:CUDA_VERSION:march1 march2 ..."
+# AARCH64_GLIBC2_34 (Jetson) only supports CUDA 12 — no linux-aarch64 in CUDA 13 redistrib.
+# AARCH64_GLIBC2_38 (DGX Spark/Grace) only has TRT for CUDA 13.
+MATRIX=(
+    "X86_64:12:x86-64 x86-64-v3 x86-64-v4"
+    "X86_64:13:x86-64 x86-64-v3 x86-64-v4"
+    "AARCH64_GLIBC2_34:12:armv8-a armv8.2-a+fp16+dotprod"
+    "AARCH64_GLIBC2_38:13:armv8-a armv9-a"
+)
+
+# If PLATFORM or CUDA_VERSION is unset, iterate over the matrix.
+if [ -z "$PLATFORM" ] || [ -z "$CUDA_VERSION" ]; then
+    for entry in "${MATRIX[@]}"; do
+        plat="${entry%%:*}"; rest="${entry#*:}"
+        cuda="${rest%%:*}"; marches="${rest#*:}"
+        [ -n "$PLATFORM" ] && [ "$PLATFORM" != "$plat" ] && continue
+        [ -n "$CUDA_VERSION" ] && [ "$CUDA_VERSION" != "$cuda" ] && continue
+        for march in $marches; do
+            PLATFORM=$plat CUDA_VERSION=$cuda MARCH=$march bash "$0"
+        done
+    done
+    exit 0
 fi
 
 # Default TRT_DIR from .deps/tensorrt/ based on CUDA_VERSION and PLATFORM
