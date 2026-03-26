@@ -1,30 +1,54 @@
-# OAAX Nvidia conversion toolchain
+# OAAX NVIDIA Conversion Toolchain
 
-This Nvidia implementation of an OAAX conversion toolchain converts a non-optimized ONNX model to optimized ONNX model using the [ONNX Simplifier](https://github.com/daquexian/onnx-simplifier) tool.   
-The optimization step includes checking the correctness of the ONNX graph, fusing operators, removing unused nodes, and applying other optimizations. Hence, the resulting model is expected to be smaller and more efficient for deployment.
+This toolchain compiles an ONNX model into a TensorRT engine (`.trt`) optimised for a specific NVIDIA GPU architecture.
 
-## Getting started
+> **A GPU is required at conversion time.** TensorRT engine building performs hardware-specific kernel profiling and auto-tuning; the Docker container must be run with `--gpus all`.
 
-The Docker image is built using the provided [Dockerfile](Dockerfile) and [entrypoint](scripts%2Fconvert.sh) script. 
-The entrypoint script takes two parameters:
-- The path to the platform-agnostic model.
-- The path to the output directory where the optimized model will be saved, along with a JSON file that contains the conversion process logs.
+## Input format
 
-The conversion toolchain relies on the Python package `conversion_toolchain` which is installed in the Docker image during the build stage.
+The toolchain accepts a **zip archive** containing:
 
-To build the example Docker image, run the following command (Note that you need to have Docker installed):
+- `model.onnx` — the ONNX model to compile
+- `config.json` — build configuration:
+
+```json
+{
+  "gpu_architecture": "sm_86",
+  "precision": "fp16",
+  "workspace_gb": 4
+}
+```
+
+| Field | Required | Values | Description |
+|---|---|---|---|
+| `gpu_architecture` | Yes | e.g. `sm_80`, `sm_86`, `sm_89`, `sm_90` | Target GPU compute capability |
+| `precision` | Yes | `fp32`, `fp16`, `int8` | Inference precision |
+| `workspace_gb` | No | integer (default: `4`) | TensorRT workspace memory limit in GB |
+
+> The engine is not portable across GPU architectures. Match `gpu_architecture` to the GPU where inference will run.
+
+## Output
+
+- `model.trt` — serialised TensorRT engine
+- `logs.json` — conversion logs including input MD5, config used, and output MD5
+
+MIME type: `application/x-tensorrt`
+
+## Building the Docker image
+
 ```bash
 bash build-toolchain.sh
 ```
 
-This will build the Docker image, and save it in the `artifacts/` directory.
+This builds the image and saves it to `artifacts/`.
 
-## Running the conversion toolchain
+## Running the conversion
 
-To run the conversion toolchain, you need to have the Docker image built and an ONNX model file to convert.
-To convert a model, run the following command:
 ```bash
-docker run -v /path/to/model-directory:/model  oaax-cuda-toolchain:latest /model/model.onnx /model/output
+docker run --gpus all \
+  -v /path/to/model-directory:/model \
+  oaax-tensorrt-toolchain:latest \
+  /model/model.zip /model/output
 ```
-That will create a Docker container, mount the model directory to the container, and run the conversion process on the model file `model.onnx` (located in `/path/to/model-directory` on the host machine). 
-The optimized model will be saved in the `/path/to/model-directory/output/` directory (on the host).
+
+The converted engine will be written to `/path/to/model-directory/output/model.trt`.
