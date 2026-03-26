@@ -35,20 +35,13 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Populate TensorRT archives
+        run: |
+          mkdir -p tensorrt-archives
+          cp ${{ secrets.TENSORRT_ARCHIVES_DIR }}/*.tar.gz tensorrt-archives/ 2>/dev/null || true
+
       - name: Set up environment
         run: bash scripts/setup-env.sh
-
-      - name: Set CUDA paths
-        run: |
-          if [ "${{ matrix.cuda_version }}" = "12" ]; then
-            echo "TRT_DIR_X86=${{ secrets.TRT_DIR_X86_CUDA12 }}" >> $GITHUB_ENV
-            echo "TRT_DIR_AARCH64=${{ secrets.TRT_DIR_AARCH64_CUDA12 }}" >> $GITHUB_ENV
-            echo "CUDA_ROOT=${{ secrets.CUDA_ROOT_12 }}" >> $GITHUB_ENV
-          elif [ "${{ matrix.cuda_version }}" = "13" ]; then
-            echo "TRT_DIR_X86=${{ secrets.TRT_DIR_X86_CUDA13 }}" >> $GITHUB_ENV
-            echo "TRT_DIR_AARCH64=${{ secrets.TRT_DIR_AARCH64_CUDA13 }}" >> $GITHUB_ENV
-            echo "CUDA_ROOT=${{ secrets.CUDA_ROOT_13 }}" >> $GITHUB_ENV
-          fi
 
       - name: Determine version
         run: |
@@ -62,33 +55,21 @@ jobs:
       - name: Build X86_64 runtimes
         run: |
           for march in "x86-64" "x86-64-v3" "x86-64-v4"; do
-            TRT_DIR=${{ env.TRT_DIR_X86 }} \
-            CUDA_DIR=${{ env.CUDA_ROOT }} \
-            CUDA_VERSION=${{ matrix.cuda_version }} \
-            PLATFORM=X86_64 \
-            MARCH=$march \
+            CUDA_VERSION=${{ matrix.cuda_version }} PLATFORM=X86_64 MARCH=$march \
             bash runtime-library/build-runtimes.sh
           done
 
       - name: Build AARCH64_GLIBC2_34 runtimes
         run: |
           for march in "armv8-a" "armv8.2-a+fp16+dotprod"; do
-            TRT_DIR=${{ env.TRT_DIR_AARCH64 }} \
-            CUDA_DIR=${{ env.CUDA_ROOT }}/targets/aarch64-linux \
-            CUDA_VERSION=${{ matrix.cuda_version }} \
-            PLATFORM=AARCH64_GLIBC2_34 \
-            MARCH=$march \
+            CUDA_VERSION=${{ matrix.cuda_version }} PLATFORM=AARCH64_GLIBC2_34 MARCH=$march \
             bash runtime-library/build-runtimes.sh
           done
 
       - name: Build AARCH64_GLIBC2_38 runtimes
         run: |
           for march in "armv8-a" "armv9-a"; do
-            TRT_DIR=${{ env.TRT_DIR_AARCH64 }} \
-            CUDA_DIR=${{ env.CUDA_ROOT }}/targets/sbsa-linux \
-            CUDA_VERSION=${{ matrix.cuda_version }} \
-            PLATFORM=AARCH64_GLIBC2_38 \
-            MARCH=$march \
+            CUDA_VERSION=${{ matrix.cuda_version }} PLATFORM=AARCH64_GLIBC2_38 MARCH=$march \
             bash runtime-library/build-runtimes.sh
           done
 

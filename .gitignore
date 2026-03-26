@@ -13,3 +13,5 @@ CMakeUserPresets.json
 build
 .DS_Store
 artifacts
+.deps/
+tensorrt-archives/

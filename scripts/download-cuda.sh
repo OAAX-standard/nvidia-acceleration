@@ -19,8 +19,11 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
 BASE_URL="https://developer.download.nvidia.com/compute/cuda/redist"
-OUTPUT_DIR="/opt/cuda"
+OUTPUT_DIR="${REPO_ROOT}/.deps/cuda"
 VERSIONS=()
 
 while [[ $# -gt 0 ]]; do

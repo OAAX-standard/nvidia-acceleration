@@ -1,6 +1,8 @@
 set -e
 
 cd "$(dirname "$0")"
+REPO_ROOT="$(cd ".." && pwd)"
+DEPS_DIR="${REPO_ROOT}/.deps"
 
 VERSION_FILE="../VERSION"
 if [ ! -f "$VERSION_FILE" ]; then
@@ -22,6 +24,26 @@ fi
 
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 
+if [ -z "$CUDA_VERSION" ]; then
+    echo "Error: CUDA_VERSION is not set."
+    echo ""
+    echo "  Set CUDA_VERSION to the major version of the CUDA toolkit."
+    echo "  Example: CUDA_VERSION=12 or CUDA_VERSION=13"
+    exit 1
+fi
+
+# Default TRT_DIR from .deps/tensorrt/ based on CUDA_VERSION and PLATFORM
+if [ -z "$TRT_DIR" ]; then
+    if [ -n "$CUDA_VERSION" ]; then
+        case "$PLATFORM" in
+            X86_64)             trt_platform="x86_64" ;;
+            AARCH64_GLIBC2_34)  trt_platform="x86_64" ;;  # Jetson uses x86_64 TRT libs for cross
+            AARCH64_GLIBC2_38)  trt_platform="sbsa-linux" ;;
+        esac
+        TRT_DIR="${DEPS_DIR}/tensorrt/cuda-${CUDA_VERSION}/${trt_platform}"
+    fi
+fi
+
 if [ -z "$TRT_DIR" ]; then
     echo "Error: TRT_DIR is not set."
     echo ""
@@ -41,19 +63,30 @@ if [ ! -d "$TRT_DIR/include" ] || [ ! -d "$TRT_DIR/lib" ]; then
     exit 1
 fi
 
+# Default CUDA_DIR from .deps/cuda/ based on CUDA_VERSION and PLATFORM
+if [ -z "$CUDA_DIR" ]; then
+    if [ -n "$CUDA_VERSION" ]; then
+        case "$PLATFORM" in
+            X86_64)             cuda_platform="x86_64" ;;
+            AARCH64_GLIBC2_34)  cuda_platform="aarch64-linux" ;;
+            AARCH64_GLIBC2_38)  cuda_platform="sbsa-linux" ;;
+        esac
+        CUDA_DIR="${DEPS_DIR}/cuda/${CUDA_VERSION}/${cuda_platform}"
+    fi
+fi
+
 if [ -z "$CUDA_DIR" ]; then
     echo "Error: CUDA_DIR is not set."
     echo ""
     echo "  CUDA_DIR must point to a CUDA toolkit directory (contains include/ and lib/ or lib64/)."
-    echo "  Download and install the CUDA Toolkit from:"
-    echo "    https://developer.nvidia.com/cuda-downloads"
+    echo "  Run scripts/setup-env.sh to download CUDA into .deps/cuda/, or set CUDA_DIR manually."
     echo ""
     echo "  For cross-compilation to aarch64, use the target-specific subdirectory:"
-    echo "    AARCH64_GLIBC2_34:        CUDA_DIR=/usr/local/cuda/targets/aarch64-linux"
-    echo "    AARCH64_GLIBC2_38: CUDA_DIR=/usr/local/cuda/targets/sbsa-linux"
+    echo "    AARCH64_GLIBC2_34:  CUDA_DIR=.deps/cuda/12/aarch64-linux"
+    echo "    AARCH64_GLIBC2_38:  CUDA_DIR=.deps/cuda/13/sbsa-linux"
     echo ""
     echo "  Example:"
-    echo "    CUDA_DIR=/usr/local/cuda PLATFORM=X86_64 ./build-runtimes.sh"
+    echo "    CUDA_VERSION=12 PLATFORM=X86_64 ./build-runtimes.sh"
     exit 1
 fi
 
@@ -61,14 +94,6 @@ if [ ! -d "$CUDA_DIR/include" ]; then
     echo "Error: CUDA_DIR=$CUDA_DIR does not look like a valid CUDA directory."
     echo "  Expected an include/ subdirectory."
     echo "  Download from: https://developer.nvidia.com/cuda-downloads"
-    exit 1
-fi
-
-if [ -z "$CUDA_VERSION" ]; then
-    echo "Error: CUDA_VERSION is not set."
-    echo ""
-    echo "  Set CUDA_VERSION to the major version of the CUDA toolkit pointed to by CUDA_DIR."
-    echo "  Example: CUDA_VERSION=12 or CUDA_VERSION=13"
     exit 1
 fi
 
