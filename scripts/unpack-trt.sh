@@ -24,9 +24,9 @@ DOWNLOAD_URL="https://developer.nvidia.com/tensorrt/download/10x"
 
 # Each entry: "glob_pattern|dest_subdir|description"
 TARGETS=(
-    "TensorRT-*x86_64*cuda-12*.tar.gz|cuda-12/x86_64|TensorRT 10.16.0 GA for Linux x86_64 and CUDA 12.0 to 12.9 TAR Package"
-    "TensorRT-*x86_64*cuda-13*.tar.gz|cuda-13/x86_64|TensorRT 10.16.0 GA for Linux x86_64 and CUDA 13.0 to 13.2 TAR Package"
-    "TensorRT-*sbsa*cuda-13*.tar.gz|cuda-13/sbsa-linux|TensorRT 10.16.0 GA for Linux SBSA and CUDA 13.2 TAR Package"
+    "TensorRT-*.Linux.x86_64*.cuda-12*.tar.gz|cuda-12/x86_64|TensorRT 10.16.0 GA for Linux x86_64 and CUDA 12.0 to 12.9 TAR Package"
+    "TensorRT-*.Linux.x86_64*.cuda-13*.tar.gz|cuda-13/x86_64|TensorRT 10.16.0 GA for Linux x86_64 and CUDA 13.0 to 13.2 TAR Package"
+    "TensorRT-*.Linux.aarch64*.cuda-13*.tar.gz|cuda-13/sbsa-linux|TensorRT 10.16.0 GA for Linux SBSA and CUDA 13.2 TAR Package"
 )
 
 if [ ! -d "$ARCHIVES_DIR" ]; then
