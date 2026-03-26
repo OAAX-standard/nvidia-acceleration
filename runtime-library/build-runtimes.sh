@@ -73,11 +73,17 @@ if [ -z "$CUDA_VERSION" ]; then
 fi
 
 echo "Building: PLATFORM=$PLATFORM  VERSION=$VERSION  BUILD_TYPE=$BUILD_TYPE"
-echo "          CUDA_VERSION=$CUDA_VERSION"
+echo "          CUDA_VERSION=$CUDA_VERSION  MARCH=${MARCH:-<default>}"
 echo "          TRT_DIR=$TRT_DIR"
 echo "          CUDA_DIR=$CUDA_DIR"
 
-BUILD_DIR="build/${PLATFORM}/cuda-${CUDA_VERSION}"
+# MARCH defaults are applied by CMakeLists.txt if not set here
+MARCH_CMAKE_ARG=""
+if [ -n "$MARCH" ]; then
+    MARCH_CMAKE_ARG="-DMARCH=${MARCH}"
+fi
+
+BUILD_DIR="build/${PLATFORM}/cuda-${CUDA_VERSION}/${MARCH:-default}"
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
@@ -88,6 +94,7 @@ cmake \
     -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
     -DTRT_DIR="$TRT_DIR" \
     -DCUDA_DIR="$CUDA_DIR" \
+    $MARCH_CMAKE_ARG \
     ../..
 
 make -j"$(nproc)"

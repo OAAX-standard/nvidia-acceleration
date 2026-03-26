@@ -32,6 +32,7 @@ TRT_DIR=/path/to/TensorRT-10.x.y.z-x86_64 \
 CUDA_DIR=/usr/local/cuda \
 CUDA_VERSION=13 \
 PLATFORM=X86_64 \
+MARCH=x86-64-v3 \
 bash build-runtimes.sh
 
 # AARCH64_GLIBC2_34 (Jetson / JetPack)
@@ -39,6 +40,7 @@ TRT_DIR=/path/to/TensorRT-10.x.y.z-aarch64 \
 CUDA_DIR=/usr/local/cuda/targets/aarch64-linux \
 CUDA_VERSION=13 \
 PLATFORM=AARCH64_GLIBC2_34 \
+MARCH=armv8.2-a+fp16+dotprod \
 bash build-runtimes.sh
 
 # AARCH64_GLIBC2_38 (DGX Spark / Grace)
@@ -46,6 +48,7 @@ TRT_DIR=/path/to/TensorRT-10.x.y.z-aarch64 \
 CUDA_DIR=/usr/local/cuda/targets/sbsa-linux \
 CUDA_VERSION=13 \
 PLATFORM=AARCH64_GLIBC2_38 \
+MARCH=armv9-a \
 bash build-runtimes.sh
 ```
 
@@ -55,12 +58,25 @@ bash build-runtimes.sh
 | `TRT_DIR` | *(required)* | Path to extracted TensorRT archive |
 | `CUDA_DIR` | *(required)* | Path to CUDA toolkit (or target-specific subdirectory) |
 | `CUDA_VERSION` | *(required)* | Major CUDA version (e.g. `12` or `13`) — used to name the output |
+| `MARCH` | per-platform default (see below) | Target CPU architecture flag passed to `-march=` |
 | `BUILD_TYPE` | `Release` | `Release`, `Debug`, `RelWithDebInfo` |
 
-Output: `build/<PLATFORM>/cuda-<CUDA_VERSION>/bin/`
+**Available `MARCH` values per platform:**
+
+| Platform | `MARCH` | Target hardware |
+|---|---|---|
+| `X86_64` | `x86-64` | Baseline (SSE2 only) |
+| `X86_64` | `x86-64-v3` *(default)* | Haswell+ (AVX2, FMA) |
+| `X86_64` | `x86-64-v4` | Skylake-X+ (AVX-512) |
+| `AARCH64_GLIBC2_34` | `armv8-a` | Baseline aarch64 |
+| `AARCH64_GLIBC2_34` | `armv8.2-a+fp16+dotprod` *(default)* | Jetson Orin (Cortex-A78AE) |
+| `AARCH64_GLIBC2_38` | `armv8-a` | Baseline aarch64 |
+| `AARCH64_GLIBC2_38` | `armv9-a` *(default)* | Grace / Neoverse V2 |
+
+Output: `build/<PLATFORM>/cuda-<CUDA_VERSION>/<MARCH>/bin/`
 
 ```
-build/X86_64/cuda-13/bin/
+build/X86_64/cuda-13/x86-64-v3/bin/
 ├── libRuntimeLibrary.so      # OAAX runtime
 ├── libnvinfer.so.10          # }
 ├── libnvinfer_plugin.so.10   # } bundled TRT libs
@@ -92,7 +108,7 @@ A standalone C test is provided in `test/test_runtime.c`. It exercises the full 
 
 ```bash
 docker run --rm --gpus all \
-  -v $(pwd)/build/X86_64/cuda-13/bin:/runtime_lib \
+  -v $(pwd)/build/X86_64/cuda-13/x86-64-v3/bin:/runtime_lib \
   -v $(pwd)/test/test_runtime.c:/tmp/test_runtime.c \
   -v /path/to/model.trt:/tmp/model.trt \
   --entrypoint bash \

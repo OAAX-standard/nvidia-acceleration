@@ -12,7 +12,7 @@ on:
 
 jobs:
   build-runtimes:
-    timeout-minutes: 60
+    timeout-minutes: 120
     runs-on: hetzner-runner
     container:
       image: ubuntu:22.04
@@ -59,37 +59,55 @@ jobs:
           fi
           echo "version=$version" >> $GITHUB_ENV
 
-      - name: Build X86_64 runtime
+      - name: Build X86_64 runtimes
         run: |
-          TRT_DIR=${{ env.TRT_DIR_X86 }} \
-          CUDA_DIR=${{ env.CUDA_ROOT }} \
-          CUDA_VERSION=${{ matrix.cuda_version }} \
-          PLATFORM=X86_64 \
-          bash runtime-library/build-runtimes.sh
+          for march in "x86-64" "x86-64-v3" "x86-64-v4"; do
+            TRT_DIR=${{ env.TRT_DIR_X86 }} \
+            CUDA_DIR=${{ env.CUDA_ROOT }} \
+            CUDA_VERSION=${{ matrix.cuda_version }} \
+            PLATFORM=X86_64 \
+            MARCH=$march \
+            bash runtime-library/build-runtimes.sh
+          done
 
-      - name: Build AARCH64_GLIBC2_34 runtime
+      - name: Build AARCH64_GLIBC2_34 runtimes
         run: |
-          TRT_DIR=${{ env.TRT_DIR_AARCH64 }} \
-          CUDA_DIR=${{ env.CUDA_ROOT }}/targets/aarch64-linux \
-          CUDA_VERSION=${{ matrix.cuda_version }} \
-          PLATFORM=AARCH64_GLIBC2_34 \
-          bash runtime-library/build-runtimes.sh
+          for march in "armv8-a" "armv8.2-a+fp16+dotprod"; do
+            TRT_DIR=${{ env.TRT_DIR_AARCH64 }} \
+            CUDA_DIR=${{ env.CUDA_ROOT }}/targets/aarch64-linux \
+            CUDA_VERSION=${{ matrix.cuda_version }} \
+            PLATFORM=AARCH64_GLIBC2_34 \
+            MARCH=$march \
+            bash runtime-library/build-runtimes.sh
+          done
 
-      - name: Build AARCH64_GLIBC2_38 runtime
+      - name: Build AARCH64_GLIBC2_38 runtimes
         run: |
-          TRT_DIR=${{ env.TRT_DIR_AARCH64 }} \
-          CUDA_DIR=${{ env.CUDA_ROOT }}/targets/sbsa-linux \
-          CUDA_VERSION=${{ matrix.cuda_version }} \
-          PLATFORM=AARCH64_GLIBC2_38 \
-          bash runtime-library/build-runtimes.sh
+          for march in "armv8-a" "armv9-a"; do
+            TRT_DIR=${{ env.TRT_DIR_AARCH64 }} \
+            CUDA_DIR=${{ env.CUDA_ROOT }}/targets/sbsa-linux \
+            CUDA_VERSION=${{ matrix.cuda_version }} \
+            PLATFORM=AARCH64_GLIBC2_38 \
+            MARCH=$march \
+            bash runtime-library/build-runtimes.sh
+          done
 
       - name: Package artifacts
         run: |
           mkdir -p artifacts
-          for platform in X86_64 AARCH64_GLIBC2_34 AARCH64_GLIBC2_38; do
-            tar czf "artifacts/runtime-library-${platform}-cuda${{ matrix.cuda_version }}.tar.gz" \
-              -C "runtime-library/build/${platform}/cuda-${{ matrix.cuda_version }}" bin/
-          done
+          cuda=${{ matrix.cuda_version }}
+          pack() {
+            local platform=$1 arch=$2 march=$3
+            tar czf "artifacts/runtime-${platform}-${march}-cuda${cuda}.tar.gz" \
+              -C "runtime-library/build/${platform}/cuda-${cuda}/${march}" bin/
+          }
+          pack X86_64             x86_64         x86-64
+          pack X86_64             x86_64         x86-64-v3
+          pack X86_64             x86_64         x86-64-v4
+          pack AARCH64_GLIBC2_34  aarch64        armv8-a
+          pack AARCH64_GLIBC2_34  aarch64        armv8.2-a+fp16+dotprod
+          pack AARCH64_GLIBC2_38  aarch64-server armv8-a
+          pack AARCH64_GLIBC2_38  aarch64-server armv9-a
 
       - name: Install dependencies
         run: |
@@ -112,12 +130,18 @@ jobs:
         run: |
           version=${{ env.version }}
           cuda=${{ matrix.cuda_version }}
-          s3cmd put "artifacts/runtime-library-X86_64-cuda${cuda}.tar.gz" \
-            "s3://oaax/runtimes/${version}/NVIDIA/cuda-${cuda}/x86_64/Ubuntu/library.tar.gz"
-          s3cmd put "artifacts/runtime-library-AARCH64_GLIBC2_34-cuda${cuda}.tar.gz" \
-            "s3://oaax/runtimes/${version}/NVIDIA/cuda-${cuda}/aarch64/Ubuntu/library.tar.gz"
-          s3cmd put "artifacts/runtime-library-AARCH64_GLIBC2_38-cuda${cuda}.tar.gz" \
-            "s3://oaax/runtimes/${version}/NVIDIA/cuda-${cuda}/aarch64-server/Ubuntu/library.tar.gz"
+          upload() {
+            local platform=$1 arch=$2 march=$3
+            s3cmd put "artifacts/runtime-${platform}-${march}-cuda${cuda}.tar.gz" \
+              "s3://oaax/runtimes/${version}/NVIDIA/cuda-${cuda}/${arch}/${march}/Ubuntu/library.tar.gz"
+          }
+          upload X86_64             x86_64         x86-64
+          upload X86_64             x86_64         x86-64-v3
+          upload X86_64             x86_64         x86-64-v4
+          upload AARCH64_GLIBC2_34  aarch64        armv8-a
+          upload AARCH64_GLIBC2_34  aarch64        armv8.2-a+fp16+dotprod
+          upload AARCH64_GLIBC2_38  aarch64-server armv8-a
+          upload AARCH64_GLIBC2_38  aarch64-server armv9-a
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             s3cmd sync "s3://oaax/runtimes/${version}/NVIDIA/" \
                        "s3://oaax/runtimes/latest/NVIDIA/"
