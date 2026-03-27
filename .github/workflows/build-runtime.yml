@@ -25,7 +25,7 @@ jobs:
         run: |
           export DEBIAN_FRONTEND=noninteractive
           apt-get update
-          apt-get install -y git git-lfs wget curl build-essential python3 xz-utils s3cmd
+          apt-get install -y git git-lfs wget curl build-essential python3 xz-utils s3cmd sudo
           git lfs install
 
       - name: Checkout
