@@ -16,14 +16,16 @@ jobs:
     runs-on: hetzner-runner
     container:
       image: ubuntu:22.04
-      options: --volume /var/run/docker.sock:/var/run/docker.sock
+      options: >-
+        --volume /var/run/docker.sock:/var/run/docker.sock
+        --volume /home/github-runner/nvidia-acceleration-deps:/home/github-runner/nvidia-acceleration-deps
 
     steps:
       - name: Set up Docker image
         run: |
           export DEBIAN_FRONTEND=noninteractive
           apt-get update
-          apt-get install -y git git-lfs
+          apt-get install -y git git-lfs wget curl build-essential python3 xz-utils s3cmd
           git lfs install
 
       - name: Checkout
@@ -31,13 +33,20 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Populate TensorRT archives
+      - name: Install CMake
         run: |
-          mkdir -p tensorrt-archives
-          cp ${{ secrets.TENSORRT_ARCHIVES_DIR }}/*.tar.gz tensorrt-archives/ 2>/dev/null || true
+          if ! command -v cmake &>/dev/null || [ "$(cmake --version | head -1 | awk '{print $3}')" \< "3.14" ]; then
+            host_platform=$(uname -m)
+            wget -q "https://cmake.org/files/v3.31/cmake-3.31.7-linux-${host_platform}.sh" -O /tmp/cmake-install.sh
+            chmod u+x /tmp/cmake-install.sh
+            mkdir -p /opt/cmake-3.31.7
+            /tmp/cmake-install.sh --skip-license --prefix=/opt/cmake-3.31.7
+            rm /tmp/cmake-install.sh
+            ln -fs /opt/cmake-3.31.7/bin/* /usr/local/bin
+          fi
 
-      - name: Set up environment
-        run: bash scripts/setup-env.sh
+      - name: Link pre-cached deps
+        run: ln -s /home/github-runner/nvidia-acceleration-deps .deps
 
       - name: Determine version
         run: |
@@ -50,11 +59,6 @@ jobs:
 
       - name: Build all runtimes
         run: bash runtime-library/build-runtimes.sh
-
-      - name: Install dependencies
-        run: |
-          export DEBIAN_FRONTEND=noninteractive
-          apt-get install -y s3cmd
 
       - name: Configure s3cmd
         run: |
