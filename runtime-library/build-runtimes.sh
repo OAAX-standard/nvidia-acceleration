@@ -14,14 +14,14 @@ VERSION=$(<"$VERSION_FILE")
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 
 # Full build matrix: "PLATFORM:CUDA_VERSION:march1 march2 ..."
-# AARCH64_GLIBC2_34 (Jetson): CUDA 12 only — no linux-aarch64 in CUDA 13 redistrib.
-# AARCH64_GLIBC2_38 (DGX Spark/Grace): CUDA 12 and 13 both have SBSA TRT packages.
+# AARCH64_JETSON (Jetson): CUDA 12 only — no linux-aarch64 in CUDA 13 redistrib.
+# AARCH64_SBSA (DGX Spark/Grace): CUDA 12 and 13 both have SBSA TRT packages.
 MATRIX=(
     "X86_64:12:x86-64 x86-64-v3 x86-64-v4"
     "X86_64:13:x86-64 x86-64-v3 x86-64-v4"
-    "AARCH64_GLIBC2_34:12:armv8-a armv8.2-a+fp16+dotprod"
-    "AARCH64_GLIBC2_38:12:armv8-a armv9-a"
-    "AARCH64_GLIBC2_38:13:armv8-a armv9-a"
+    "AARCH64_JETSON:12:armv8-a armv8.2-a+fp16+dotprod"
+    "AARCH64_SBSA:12:armv8-a armv9-a"
+    "AARCH64_SBSA:13:armv8-a armv9-a"
 )
 
 # If PLATFORM or CUDA_VERSION is unset, iterate over the matrix.
@@ -43,8 +43,8 @@ if [ -z "$TRT_DIR" ]; then
     if [ -n "$CUDA_VERSION" ]; then
         case "$PLATFORM" in
             X86_64)             trt_platform="x86_64" ;;
-            AARCH64_GLIBC2_34)  trt_platform="aarch64-linux" ;;
-            AARCH64_GLIBC2_38)  trt_platform="sbsa-linux" ;;
+            AARCH64_JETSON)  trt_platform="aarch64-linux" ;;
+            AARCH64_SBSA)  trt_platform="sbsa-linux" ;;
         esac
         TRT_DIR="${DEPS_DIR}/tensorrt/cuda-${CUDA_VERSION}/${trt_platform}"
     fi
@@ -74,8 +74,8 @@ if [ -z "$CUDA_DIR" ]; then
     if [ -n "$CUDA_VERSION" ]; then
         case "$PLATFORM" in
             X86_64)             cuda_platform="x86_64" ;;
-            AARCH64_GLIBC2_34)  cuda_platform="aarch64-linux" ;;
-            AARCH64_GLIBC2_38)  cuda_platform="sbsa-linux" ;;
+            AARCH64_JETSON)  cuda_platform="aarch64-linux" ;;
+            AARCH64_SBSA)  cuda_platform="sbsa-linux" ;;
         esac
         CUDA_DIR="${DEPS_DIR}/cuda/${CUDA_VERSION}/${cuda_platform}"
     fi
@@ -88,8 +88,8 @@ if [ -z "$CUDA_DIR" ]; then
     echo "  Run scripts/setup-env.sh to download CUDA into .deps/cuda/, or set CUDA_DIR manually."
     echo ""
     echo "  For cross-compilation to aarch64, use the target-specific subdirectory:"
-    echo "    AARCH64_GLIBC2_34:  CUDA_DIR=.deps/cuda/12/aarch64-linux"
-    echo "    AARCH64_GLIBC2_38:  CUDA_DIR=.deps/cuda/13/sbsa-linux"
+    echo "    AARCH64_JETSON:  CUDA_DIR=.deps/cuda/12/aarch64-linux"
+    echo "    AARCH64_SBSA:  CUDA_DIR=.deps/cuda/13/sbsa-linux"
     echo ""
     echo "  Example:"
     echo "    CUDA_VERSION=12 PLATFORM=X86_64 ./build-runtimes.sh"

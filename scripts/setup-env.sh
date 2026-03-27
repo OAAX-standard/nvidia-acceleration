@@ -27,8 +27,8 @@ if [ "$FORCE" = false ] && [ -f "$STAMP_FILE" ]; then
 fi
 
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -y
-apt-get install -y wget curl build-essential python3 xz-utils
+sudo apt-get update -y
+sudo apt-get install -y wget curl build-essential python3 xz-utils
 
 mkdir -p "${DEPS_DIR}/toolchains"
 

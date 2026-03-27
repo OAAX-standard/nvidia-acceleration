@@ -4,10 +4,10 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_VERBOSE_MAKEFILE OFF)
 
 # === Platform Selection ===
-# Supported: X86_64, AARCH64_GLIBC2_34 (Jetson / JetPack), AARCH64_GLIBC2_38 (DGX Spark / Grace CPU)
+# Supported: X86_64, AARCH64_JETSON (Jetson / JetPack), AARCH64_SBSA (DGX Spark / Grace CPU)
 if(NOT DEFINED PLATFORM)
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
-        set(PLATFORM AARCH64_GLIBC2_38)
+        set(PLATFORM AARCH64_SBSA)
     else()
         set(PLATFORM X86_64)
     endif()
@@ -15,10 +15,10 @@ if(NOT DEFINED PLATFORM)
 endif()
 
 if(NOT PLATFORM STREQUAL "X86_64" AND
-   NOT PLATFORM STREQUAL "AARCH64_GLIBC2_34" AND
-   NOT PLATFORM STREQUAL "AARCH64_GLIBC2_38")
+   NOT PLATFORM STREQUAL "AARCH64_JETSON" AND
+   NOT PLATFORM STREQUAL "AARCH64_SBSA")
     message(FATAL_ERROR
-        "PLATFORM must be X86_64, AARCH64_GLIBC2_34, or AARCH64_GLIBC2_38. "
+        "PLATFORM must be X86_64, AARCH64_JETSON, or AARCH64_SBSA. "
         "Windows is not supported in the TensorRT-native runtime.")
 endif()
 
@@ -40,12 +40,12 @@ if(PLATFORM STREQUAL "X86_64")
     set(CROSS_ROOT "${DEPS_TOOLCHAINS}/x86-64-v2--glibc--stable-2022.08-1")
     set(COMPILER_PREFIX "x86_64-linux-")
     set(DEFAULT_MARCH "x86-64-v3")
-elseif(PLATFORM STREQUAL "AARCH64_GLIBC2_34")
+elseif(PLATFORM STREQUAL "AARCH64_JETSON")
     set(CMAKE_SYSTEM_PROCESSOR aarch64)
     set(CROSS_ROOT "${DEPS_TOOLCHAINS}/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu")
     set(COMPILER_PREFIX "aarch64-none-linux-gnu-")
     set(DEFAULT_MARCH "armv8.2-a+fp16+dotprod")
-elseif(PLATFORM STREQUAL "AARCH64_GLIBC2_38")
+elseif(PLATFORM STREQUAL "AARCH64_SBSA")
     set(CMAKE_SYSTEM_PROCESSOR aarch64)
     set(CROSS_ROOT "${DEPS_TOOLCHAINS}/arm-gnu-toolchain-13.2.Rel1-x86_64-aarch64-none-linux-gnu")
     set(COMPILER_PREFIX "aarch64-none-linux-gnu-")
@@ -156,7 +156,7 @@ add_library(RuntimeLibrary SHARED ${SRC})
 
 target_link_options(RuntimeLibrary PRIVATE "-Wl,-z,noexecstack")
 
-# AARCH64_GLIBC2_34 targets use empty stub .so files for linking (real libs on target machine).
+# AARCH64_JETSON targets use empty stub .so files for linking (real libs on target machine).
 # --allow-shlib-undefined lets the linker accept stubs with no symbol definitions.
 if(NOT PLATFORM STREQUAL "X86_64")
     target_link_options(RuntimeLibrary PRIVATE "-Wl,--allow-shlib-undefined")
@@ -209,9 +209,9 @@ set_target_properties(RuntimeLibrary PROPERTIES
 # Copy TRT and CUDA libs alongside libRuntimeLibrary.so so the output directory
 # is self-contained. Uses cp -P to preserve symlink chains.
 #
-# AARCH64_GLIBC2_34 (Jetson): TRT is pre-installed via JetPack — do not bundle.
+# AARCH64_JETSON (Jetson): TRT is pre-installed via JetPack — do not bundle.
 # Only bundle libcudart for aarch64 cross-builds.
-if(PLATFORM STREQUAL "AARCH64_GLIBC2_34")
+if(PLATFORM STREQUAL "AARCH64_JETSON")
     add_custom_command(TARGET RuntimeLibrary POST_BUILD
         COMMAND bash -c
             "cp -P ${CUDA_LIB_DIR}/libcudart.so* \

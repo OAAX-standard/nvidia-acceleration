@@ -65,12 +65,12 @@ jobs:
           pack X86_64            13 x86-64
           pack X86_64            13 x86-64-v3
           pack X86_64            13 x86-64-v4
-          pack AARCH64_GLIBC2_34 12 armv8-a
-          pack AARCH64_GLIBC2_34 12 armv8.2-a+fp16+dotprod
-          pack AARCH64_GLIBC2_38 12 armv8-a
-          pack AARCH64_GLIBC2_38 12 armv9-a
-          pack AARCH64_GLIBC2_38 13 armv8-a
-          pack AARCH64_GLIBC2_38 13 armv9-a
+          pack AARCH64_JETSON 12 armv8-a
+          pack AARCH64_JETSON 12 armv8.2-a+fp16+dotprod
+          pack AARCH64_SBSA 12 armv8-a
+          pack AARCH64_SBSA 12 armv9-a
+          pack AARCH64_SBSA 13 armv8-a
+          pack AARCH64_SBSA 13 armv9-a
 
       - name: Install dependencies
         run: |
@@ -103,12 +103,12 @@ jobs:
           upload X86_64            13 x86_64  x86-64                 glibc2.35
           upload X86_64            13 x86_64  x86-64-v3              glibc2.35
           upload X86_64            13 x86_64  x86-64-v4              glibc2.35
-          upload AARCH64_GLIBC2_34 12 aarch64 armv8-a                glibc2.34
-          upload AARCH64_GLIBC2_34 12 aarch64 armv8.2-a+fp16+dotprod glibc2.34
-          upload AARCH64_GLIBC2_38 12 aarch64 armv8-a                glibc2.38
-          upload AARCH64_GLIBC2_38 12 aarch64 armv9-a                glibc2.38
-          upload AARCH64_GLIBC2_38 13 aarch64 armv8-a                glibc2.38
-          upload AARCH64_GLIBC2_38 13 aarch64 armv9-a                glibc2.38
+          upload AARCH64_JETSON 12 aarch64 armv8-a                glibc2.34
+          upload AARCH64_JETSON 12 aarch64 armv8.2-a+fp16+dotprod glibc2.34
+          upload AARCH64_SBSA 12 aarch64 armv8-a                glibc2.38
+          upload AARCH64_SBSA 12 aarch64 armv9-a                glibc2.38
+          upload AARCH64_SBSA 13 aarch64 armv8-a                glibc2.38
+          upload AARCH64_SBSA 13 aarch64 armv9-a                glibc2.38
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             s3cmd sync "s3://oaax/runtimes/${version}/NVIDIA/" \
                        "s3://oaax/runtimes/latest/NVIDIA/"

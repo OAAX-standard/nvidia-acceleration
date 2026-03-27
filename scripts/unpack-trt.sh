@@ -9,8 +9,8 @@
 #     TensorRT 10.16.0 GA for Linux SBSA and CUDA 13.2 TAR Package
 #
 #   From https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.7.0/tars/
-#     TensorRT-10.7.0.23.l4t.aarch64-gnu.cuda-12.6.tar.gz   (Jetson / AARCH64_GLIBC2_34)
-#     TensorRT-10.7.0.23.Linux.aarch64-gnu.cuda-12.6.tar.gz  (SBSA / AARCH64_GLIBC2_38 + CUDA 12)
+#     TensorRT-10.7.0.23.l4t.aarch64-gnu.cuda-12.6.tar.gz   (Jetson / AARCH64_JETSON)
+#     TensorRT-10.7.0.23.Linux.aarch64-gnu.cuda-12.6.tar.gz  (SBSA / AARCH64_SBSA + CUDA 12)
 #
 # Output:
 #   .deps/tensorrt/cuda-12/x86_64/

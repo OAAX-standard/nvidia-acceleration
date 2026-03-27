@@ -23,8 +23,8 @@ An ONNX model is compiled into a TensorRT engine at conversion time, targeting t
 | Platform | Architecture | Typical hardware |
 |---|---|---|
 | `X86_64` | Linux x86_64 | Any x86 server or workstation with NVIDIA GPU |
-| `AARCH64_GLIBC2_34` | Linux aarch64 | Jetson (JetPack 7.0+) |
-| `AARCH64_GLIBC2_38` | Linux aarch64 | DGX Spark, Grace-Hopper, Grace-based servers |
+| `AARCH64_JETSON` | Linux aarch64 | Jetson (JetPack 7.0+) |
+| `AARCH64_SBSA` | Linux aarch64 | DGX Spark, Grace-Hopper, Grace-based servers |
 
 ## Development machine
 

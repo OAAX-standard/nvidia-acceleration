@@ -12,8 +12,8 @@
 #
 # Output structure (mirrors the CUDA toolkit targets/ layout):
 #   <output>/<major>/x86_64/        CUDA_DIR for X86_64
-#   <output>/<major>/sbsa-linux/    CUDA_DIR for AARCH64_GLIBC2_38
-#   <output>/<major>/aarch64-linux/ CUDA_DIR for AARCH64_GLIBC2_34 (CUDA 12 only)
+#   <output>/<major>/sbsa-linux/    CUDA_DIR for AARCH64_SBSA
+#   <output>/<major>/aarch64-linux/ CUDA_DIR for AARCH64_JETSON (CUDA 12 only)
 #
 # Note: CUDA 13 does not provide a linux-aarch64 (Jetson) package.
 

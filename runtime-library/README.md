@@ -16,8 +16,8 @@ sudo apt-get install -y cmake make git
 | Platform | Toolchain | Source |
 |---|---|---|
 | `X86_64` | `x86-64-v2--glibc--stable-2022.08-1` | [Bootlin](https://toolchains.bootlin.com) |
-| `AARCH64_GLIBC2_34` | `gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu` | [Arm Developer](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) |
-| `AARCH64_GLIBC2_38` | `arm-gnu-toolchain-13.2.Rel1-x86_64-aarch64-none-linux-gnu` | [Arm Developer](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) |
+| `AARCH64_JETSON` | `gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu` | [Arm Developer](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) |
+| `AARCH64_SBSA` | `arm-gnu-toolchain-13.2.Rel1-x86_64-aarch64-none-linux-gnu` | [Arm Developer](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) |
 
 **3. Download TensorRT and CUDA from NVIDIA**
 
@@ -35,26 +35,26 @@ PLATFORM=X86_64 \
 MARCH=x86-64-v3 \
 bash build-runtimes.sh
 
-# AARCH64_GLIBC2_34 (Jetson / JetPack)
+# AARCH64_JETSON (Jetson / JetPack)
 TRT_DIR=/path/to/TensorRT-10.x.y.z-aarch64 \
 CUDA_DIR=/usr/local/cuda/targets/aarch64-linux \
 CUDA_VERSION=13 \
-PLATFORM=AARCH64_GLIBC2_34 \
+PLATFORM=AARCH64_JETSON \
 MARCH=armv8.2-a+fp16+dotprod \
 bash build-runtimes.sh
 
-# AARCH64_GLIBC2_38 (DGX Spark / Grace)
+# AARCH64_SBSA (DGX Spark / Grace)
 TRT_DIR=/path/to/TensorRT-10.x.y.z-aarch64 \
 CUDA_DIR=/usr/local/cuda/targets/sbsa-linux \
 CUDA_VERSION=13 \
-PLATFORM=AARCH64_GLIBC2_38 \
+PLATFORM=AARCH64_SBSA \
 MARCH=armv9-a \
 bash build-runtimes.sh
 ```
 
 | Variable | Default | Description |
 |---|---|---|
-| `PLATFORM` | auto-detected from `uname -m` | `X86_64`, `AARCH64_GLIBC2_34`, or `AARCH64_GLIBC2_38` |
+| `PLATFORM` | auto-detected from `uname -m` | `X86_64`, `AARCH64_JETSON`, or `AARCH64_SBSA` |
 | `TRT_DIR` | *(required)* | Path to extracted TensorRT archive |
 | `CUDA_DIR` | *(required)* | Path to CUDA toolkit (or target-specific subdirectory) |
 | `CUDA_VERSION` | *(required)* | Major CUDA version (e.g. `12` or `13`) — used to name the output |
@@ -68,10 +68,10 @@ bash build-runtimes.sh
 | `X86_64` | `x86-64` | Baseline (SSE2 only) |
 | `X86_64` | `x86-64-v3` *(default)* | Haswell+ (AVX2, FMA) |
 | `X86_64` | `x86-64-v4` | Skylake-X+ (AVX-512) |
-| `AARCH64_GLIBC2_34` | `armv8-a` | Baseline aarch64 |
-| `AARCH64_GLIBC2_34` | `armv8.2-a+fp16+dotprod` *(default)* | Jetson Orin (Cortex-A78AE) |
-| `AARCH64_GLIBC2_38` | `armv8-a` | Baseline aarch64 |
-| `AARCH64_GLIBC2_38` | `armv9-a` *(default)* | Grace / Neoverse V2 |
+| `AARCH64_JETSON` | `armv8-a` | Baseline aarch64 |
+| `AARCH64_JETSON` | `armv8.2-a+fp16+dotprod` *(default)* | Jetson Orin (Cortex-A78AE) |
+| `AARCH64_SBSA` | `armv8-a` | Baseline aarch64 |
+| `AARCH64_SBSA` | `armv9-a` *(default)* | Grace / Neoverse V2 |
 
 Output: `build/<PLATFORM>/cuda-<CUDA_VERSION>/<MARCH>/bin/`
 
