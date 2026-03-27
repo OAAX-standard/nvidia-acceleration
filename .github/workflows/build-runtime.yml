@@ -33,20 +33,11 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Install CMake
-        run: |
-          if ! command -v cmake &>/dev/null || [ "$(cmake --version | head -1 | awk '{print $3}')" \< "3.14" ]; then
-            host_platform=$(uname -m)
-            wget -q "https://cmake.org/files/v3.31/cmake-3.31.7-linux-${host_platform}.sh" -O /tmp/cmake-install.sh
-            chmod u+x /tmp/cmake-install.sh
-            mkdir -p /opt/cmake-3.31.7
-            /tmp/cmake-install.sh --skip-license --prefix=/opt/cmake-3.31.7
-            rm /tmp/cmake-install.sh
-            ln -fs /opt/cmake-3.31.7/bin/* /usr/local/bin
-          fi
-
       - name: Link pre-cached deps
-        run: ln -s ${{ secrets.NVIDIA_DEPS_DIR }} .deps
+        run: ln -fs ${{ secrets.NVIDIA_DEPS_DIR }} .deps
+
+      - name: Install env deps
+        run: bash scripts/setup-env.sh
 
       - name: Determine version
         run: |
