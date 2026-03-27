@@ -23,7 +23,6 @@ Input zip layout
 config.json schema
 ------------------
   {
-      "gpu_architecture": "sm_86",      // informational; engine targets build GPU
       "precision":        "fp16",       // "fp32" | "fp16" | "int8"
       "workspace_gb":     4,            // TRT builder workspace limit in GB
       // --- int8 only ---
@@ -37,10 +36,139 @@ config.json schema
 
 import glob
 import hashlib
+import importlib.util
 import json
 import os
+import re
+import shutil
 import subprocess
+import sys
 import zipfile
+
+
+# ---------------------------------------------------------------------------
+# Dependency checks
+# ---------------------------------------------------------------------------
+
+# TRT version bundled in the OAAX runtime library (libnvinfer.so.X.Y.Z).
+# Engines must be built with a TRT version whose major number matches and
+# whose minor number is <= this value (newer runtimes can load older engines,
+# but not the other way around).
+_RUNTIME_TRT_VERSION = (10, 16, 0)
+
+
+def _parse_trtexec_banner(output: str):
+    """Extract (major, minor, patch) from a trtexec banner string.
+
+    trtexec prints a version code on its first output line:
+      TRT  8.6.0 → [TensorRT v8601]   (4-digit: major minor patch build)
+      TRT 10.16.0 → [TensorRT v101600] (6-digit: major(2) minor(2) patch(2))
+    """
+    m = re.search(r'\[TensorRT v(\d+)\]', output)
+    if not m:
+        return None
+    n = int(m.group(1))
+    if n >= 100000:          # TRT 10+
+        return (n // 10000, (n % 10000) // 100, n % 100)
+    else:                    # TRT 8 / 9
+        return (n // 1000, (n % 1000) // 100, (n % 100) // 10)
+
+
+def _trtexec_version():
+    """Return the trtexec TRT version as (major, minor, patch), or None."""
+    path = shutil.which('trtexec')
+    if not path:
+        return None
+    result = subprocess.run([path], capture_output=True, text=True)
+    return _parse_trtexec_banner(result.stdout + result.stderr)
+
+
+def _tensorrt_python_version():
+    """Return the tensorrt Python package version as (major, minor, patch), or None."""
+    if importlib.util.find_spec('tensorrt') is None:
+        return None
+    try:
+        import tensorrt as trt  # noqa: PLC0415
+        return tuple(int(x) for x in trt.__version__.split('.')[:3])
+    except Exception:
+        return None
+
+
+def _version_warning(name: str, detected, expected=_RUNTIME_TRT_VERSION):
+    """Return a warning string if the detected TRT version is incompatible, else None."""
+    if detected is None:
+        return (f'{name}: version could not be determined — '
+                f'ensure it is TRT {expected[0]}.{expected[1]}.x')
+    d_maj, d_min, d_pat = detected
+    e_maj, e_min, e_pat = expected
+    if d_maj != e_maj:
+        return (f'{name}: version {d_maj}.{d_min}.{d_pat} has a different major version '
+                f'than the runtime TRT {e_maj}.{e_min}.{e_pat} — '
+                f'engines will not load (major version must match)')
+    if d_min > e_min:
+        return (f'{name}: version {d_maj}.{d_min}.{d_pat} is newer than '
+                f'the runtime TRT {e_maj}.{e_min}.{e_pat} — '
+                f'engine may use features not supported by the runtime')
+    return None  # same major, minor <= runtime → compatible
+
+
+def check_nvidia_dependencies(precision: str) -> None:
+    """Verify NVIDIA dependencies are present and version-compatible.
+
+    Missing dependencies are raised as a RuntimeError (hard stop).
+    Version mismatches are printed as warnings to stderr (soft — conversion
+    may still succeed but the engine might fail to load at runtime).
+
+    Checks are precision-aware: tensorrt and pycuda are only required for int8.
+
+    Args:
+        precision: One of "fp32", "fp16", "int8".
+
+    Raises:
+        RuntimeError: listing every missing or version-incompatible dependency.
+    """
+    missing  = []   # hard errors: cannot proceed
+    warnings = []   # soft: proceed but flag to the user
+
+    # nvidia-smi: always required — GPU detection and CUDA version.
+    if not shutil.which('nvidia-smi'):
+        missing.append(
+            'nvidia-smi  →  install the NVIDIA driver '
+            '(apt-get install nvidia-driver-<version>)')
+
+    # trtexec: always required (fp32/fp16 conversion path).
+    if not shutil.which('trtexec'):
+        missing.append(
+            'trtexec  →  install TensorRT and add its bin/ directory to PATH '
+            '(typically /usr/src/tensorrt/bin or the TRT package bin/)')
+    else:
+        w = _version_warning('trtexec', _trtexec_version())
+        if w:
+            warnings.append(w)
+
+    # tensorrt Python bindings + pycuda: only needed for the int8 path.
+    if precision == 'int8':
+        if importlib.util.find_spec('tensorrt') is None:
+            missing.append(
+                'tensorrt  →  pip install tensorrt '
+                '--extra-index-url https://pypi.nvidia.com')
+        else:
+            w = _version_warning('tensorrt Python package', _tensorrt_python_version())
+            if w:
+                warnings.append(w)
+
+        if importlib.util.find_spec('pycuda') is None:
+            missing.append('pycuda  →  pip install pycuda')
+
+    if missing:
+        lines = '\n'.join(f'  - {m}' for m in missing)
+        if warnings:
+            lines += '\n' + '\n'.join(f'  [!] {w}' for w in warnings)
+        raise RuntimeError(
+            f'Dependency issues for {precision} conversion:\n{lines}')
+
+    for w in warnings:
+        print(f'[WARNING] {w}', file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -82,34 +210,35 @@ def unzip_input(zip_path: str, extract_dir: str):
 # TRT build failure.
 _TRT10_MIN_SM = 75
 
-# Known architectures supported by TRT 10, listed for the error hint.
-_KNOWN_SUPPORTED_ARCHS = [
-    'sm_75',           # Turing   — T4, RTX 20xx
-    'sm_80',           # Ampere   — A100
-    'sm_86',           # Ampere   — RTX 30xx, A10, RTX A4000
-    'sm_87',           # Ampere   — Jetson AGX Orin (aarch64)
-    'sm_89',           # Ada      — RTX 40xx, L40S
-    'sm_90',           # Hopper   — H100, GH200
-    'sm_100',          # Blackwell — B100, B200
-    'sm_103',          # Blackwell — B300
-    'sm_120',          # Blackwell — RTX PRO 6000
-    'sm_121',          # Blackwell — DGX Spark (GB10)
-]
 
+def detect_gpu_architecture() -> str:
+    """Detect the compute capability of the first GPU via nvidia-smi.
 
-def _parse_sm(gpu_architecture: str):
-    """Parse 'sm_XY' or 'sm_XYZ' and return the integer XY / XYZ.
+    Returns:
+        GPU architecture string in 'sm_XY' format (e.g. 'sm_86').
 
     Raises:
-        ValueError: if the string does not match the expected format.
+        RuntimeError: if nvidia-smi is not found or fails.
+        ValueError:   if the detected compute capability is below the TRT 10 minimum.
     """
-    import re
-    match = re.fullmatch(r'sm_(\d+)', gpu_architecture.strip())
-    if not match:
+    result = subprocess.run(
+        ['nvidia-smi', '--query-gpu=compute_cap', '--format=csv,noheader'],
+        capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"nvidia-smi failed (exit {result.returncode}): {result.stderr.strip()}")
+
+    # compute_cap is e.g. "8.6" — convert to "sm_86"
+    cap = result.stdout.strip().splitlines()[0].strip()
+    sm_str = 'sm_' + cap.replace('.', '')
+    sm_int = int(cap.replace('.', ''))
+
+    if sm_int < _TRT10_MIN_SM:
         raise ValueError(
-            f"gpu_architecture must be in 'sm_<number>' format "
-            f"(e.g. 'sm_86'), got '{gpu_architecture}'")
-    return int(match.group(1))
+            f"Detected GPU compute capability {cap} (sm_{sm_int}) is not supported "
+            f"by TensorRT 10 (minimum: sm_{_TRT10_MIN_SM} / Turing).")
+
+    return sm_str
 
 
 def validate_config(config: dict):
@@ -118,18 +247,10 @@ def validate_config(config: dict):
     Raises:
         ValueError: on any missing or invalid field.
     """
-    required = ['gpu_architecture', 'precision', 'workspace_gb']
+    required = ['precision', 'workspace_gb']
     for key in required:
         if key not in config:
             raise ValueError(f"Missing required config key: '{key}'")
-
-    # --- gpu_architecture ---
-    sm = _parse_sm(config['gpu_architecture'])
-    if sm < _TRT10_MIN_SM:
-        raise ValueError(
-            f"gpu_architecture '{config['gpu_architecture']}' is not supported "
-            f"by TensorRT 10 (minimum: sm_{_TRT10_MIN_SM} / Turing). "
-            f"Supported architectures: {', '.join(_KNOWN_SUPPORTED_ARCHS)}")
 
     # --- precision ---
     valid_precisions = ['fp32', 'fp16', 'int8']

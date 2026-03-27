@@ -1,6 +1,7 @@
 [project]
-name = "conversion-toolchain"
-version = "1.0.0"
+name = "oaax-nvidia-tensorrt-conversion"
+dynamic = ["version"]
+description = "OAAX conversion toolchain — compiles an ONNX model into a TensorRT engine"
 requires-python = ">=3.8"
 dependencies = [
     "numpy",
@@ -9,9 +10,21 @@ dependencies = [
     "pycuda",
 ]
 
+# tensorrt is only required for int8 precision.
+# Install from NVIDIA's index: pip install tensorrt --extra-index-url https://pypi.nvidia.com
+[project.optional-dependencies]
+int8 = ["tensorrt"]
+
 [project.scripts]
 conversion_toolchain = "conversion_toolchain.main:cli"
 
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+version = {attr = "conversion_toolchain.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["conversion_toolchain*"]

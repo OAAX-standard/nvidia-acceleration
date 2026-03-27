@@ -16,3 +16,8 @@ artifacts
 .deps/
 tensorrt-archives/
 devices.md
+
+# Test/runtime artifacts at repo root
+*.log
+*.jpg
+*.mp4
