@@ -6,60 +6,32 @@ C++ shared library (`libRuntimeLibrary.so`) that implements the OAAX C API using
 
 **Requirements:** Linux x86_64, CMake ≥ 3.14, cross-compilation toolchains, TensorRT and CUDA from [developer.nvidia.com](https://developer.nvidia.com). No GPU needed.
 
-**1. Install build tools**
+**1. Run the environment setup script**
+
+This downloads all toolchains, CUDA, and unpacks TensorRT archives into `.deps/`:
 ```bash
-sudo apt-get install -y cmake make git
+# First place TRT archives in tensorrt-archives/ (see scripts/unpack-trt.sh for details)
+bash scripts/setup-env.sh
 ```
 
-**2. Install cross-compilation toolchains** (extract to `/opt/`):
-
-| Platform | Toolchain | Source |
-|---|---|---|
-| `X86_64` | `x86-64-v2--glibc--stable-2022.08-1` | [Bootlin](https://toolchains.bootlin.com) |
-| `AARCH64_JETSON` | `gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu` | [Arm Developer](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) |
-| `AARCH64_SBSA` | `arm-gnu-toolchain-13.2.Rel1-x86_64-aarch64-none-linux-gnu` | [Arm Developer](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) |
-
-**3. Download TensorRT and CUDA from NVIDIA**
-
-- **TensorRT**: download the Linux tar.gz archive from [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) and extract it. The directory must contain `include/` and `lib/`.
-- **CUDA Toolkit**: install from [developer.nvidia.com/cuda-downloads](https://developer.nvidia.com/cuda-downloads). For cross-compilation to aarch64, the CUDA install also provides target-specific directories under `targets/`.
-
-**4. Build**
+**2. Build**
 
 ```bash
-# X86_64
-TRT_DIR=/path/to/TensorRT-10.x.y.z-x86_64 \
-CUDA_DIR=/usr/local/cuda \
-CUDA_VERSION=13 \
-PLATFORM=X86_64 \
-MARCH=x86-64-v3 \
+# All platforms and CUDA versions (uses built-in matrix)
 bash build-runtimes.sh
 
-# AARCH64_JETSON (Jetson / JetPack)
-TRT_DIR=/path/to/TensorRT-10.x.y.z-aarch64 \
-CUDA_DIR=/usr/local/cuda/targets/aarch64-linux \
-CUDA_VERSION=13 \
-PLATFORM=AARCH64_JETSON \
-MARCH=armv8.2-a+fp16+dotprod \
-bash build-runtimes.sh
-
-# AARCH64_SBSA (DGX Spark / Grace)
-TRT_DIR=/path/to/TensorRT-10.x.y.z-aarch64 \
-CUDA_DIR=/usr/local/cuda/targets/sbsa-linux \
-CUDA_VERSION=13 \
-PLATFORM=AARCH64_SBSA \
-MARCH=armv9-a \
-bash build-runtimes.sh
+# Single combination
+PLATFORM=X86_64 CUDA_VERSION=13 MARCH=x86-64-v3 bash build-runtimes.sh
 ```
 
 | Variable | Default | Description |
 |---|---|---|
-| `PLATFORM` | auto-detected from `uname -m` | `X86_64`, `AARCH64_JETSON`, or `AARCH64_SBSA` |
-| `TRT_DIR` | *(required)* | Path to extracted TensorRT archive |
-| `CUDA_DIR` | *(required)* | Path to CUDA toolkit (or target-specific subdirectory) |
-| `CUDA_VERSION` | *(required)* | Major CUDA version (e.g. `12` or `13`) — used to name the output |
+| `PLATFORM` | all platforms | `X86_64`, `AARCH64_JETSON`, or `AARCH64_SBSA` |
+| `CUDA_VERSION` | all versions | Major CUDA version (`12` or `13`) |
 | `MARCH` | per-platform default (see below) | Target CPU architecture flag passed to `-march=` |
 | `BUILD_TYPE` | `Release` | `Release`, `Debug`, `RelWithDebInfo` |
+| `TRT_DIR` | from `.deps/tensorrt/` | Override path to extracted TensorRT archive |
+| `CUDA_DIR` | from `.deps/cuda/` | Override path to CUDA toolkit |
 
 **Available `MARCH` values per platform:**
 
@@ -73,14 +45,17 @@ bash build-runtimes.sh
 | `AARCH64_SBSA` | `armv8-a` | Baseline aarch64 |
 | `AARCH64_SBSA` | `armv9-a` *(default)* | Grace / Neoverse V2 |
 
-Output: `build/<PLATFORM>/cuda-<CUDA_VERSION>/<MARCH>/bin/`
+Output: `build/NVIDIA/<arch>/<march>/Ubuntu/<libc>/library-cuda_<N>.tar.gz`
 
 ```
-build/X86_64/cuda-13/x86-64-v3/bin/
-├── libRuntimeLibrary.so      # OAAX runtime
-├── libnvinfer.so.10          # }
-├── libnvinfer_plugin.so.10   # } bundled TRT libs
-└── libcudart.so.13           # bundled CUDA runtime
+build/NVIDIA/x86_64/x86-64-v3/Ubuntu/glibc2.35/
+├── library-cuda_13/          # build tree
+│   └── bin/
+│       ├── libRuntimeLibrary.so
+│       ├── libnvinfer.so.10
+│       ├── libnvinfer_plugin.so.10
+│       └── libcudart.so.13
+└── library-cuda_13.tar.gz    # deployable archive (bin/ contents)
 ```
 
 ## Deploy the runtime
@@ -108,7 +83,7 @@ A standalone C test is provided in `test/test_runtime.c`. It exercises the full 
 
 ```bash
 docker run --rm --gpus all \
-  -v $(pwd)/build/X86_64/cuda-13/x86-64-v3/bin:/runtime_lib \
+  -v $(pwd)/build/NVIDIA/x86_64/x86-64-v3/Ubuntu/glibc2.35/library-cuda_13/bin:/runtime_lib \
   -v $(pwd)/test/test_runtime.c:/tmp/test_runtime.c \
   -v /path/to/model.trt:/tmp/model.trt \
   --entrypoint bash \

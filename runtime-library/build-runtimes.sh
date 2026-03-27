@@ -58,7 +58,7 @@ if [ -z "$TRT_DIR" ]; then
     echo "    https://developer.nvidia.com/tensorrt"
     echo ""
     echo "  Example:"
-    echo "    TRT_DIR=/opt/TensorRT-10.16.0.72-x86_64 PLATFORM=X86_64 ./build-runtimes.sh"
+    echo "    TRT_DIR=.deps/tensorrt/cuda-12/x86_64 PLATFORM=X86_64 CUDA_VERSION=12 ./build-runtimes.sh"
     exit 1
 fi
 

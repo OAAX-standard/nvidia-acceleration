@@ -91,18 +91,18 @@ for (int i = 0; i < engine->getNbIOTensors(); i++)
 
 | PLATFORM | Target | Toolchain |
 |---|---|---|
-| `X86_64` | Linux x86_64 | `/opt/x86-64-v2--glibc--stable-2022.08-1` |
-| `AARCH64_JETSON` | Jetson / JetPack | `/opt/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu` |
-| `AARCH64_SBSA` | DGX Spark / Grace | `/opt/arm-gnu-toolchain-13.2.Rel1-x86_64-aarch64-none-linux-gnu` |
+| `X86_64` | Linux x86_64 | `.deps/toolchains/x86-64-v2--glibc--stable-2022.08-1` |
+| `AARCH64_JETSON` | Jetson / JetPack | `.deps/toolchains/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu` |
+| `AARCH64_SBSA` | DGX Spark / Grace | `.deps/toolchains/arm-gnu-toolchain-13.2.Rel1-x86_64-aarch64-none-linux-gnu` |
 
 ### External Dependencies (not in repo)
 
-- `TRT_DIR`: extracted TensorRT archive (contains `include/` and `lib/`)
-- `CUDA_DIR`: CUDA toolkit (contains `include/` and `lib/` or `lib64/`)
+- `TRT_DIR`: defaults to `.deps/tensorrt/cuda-<N>/<platform>/` (set by `setup-env.sh`)
+- `CUDA_DIR`: defaults to `.deps/cuda/<N>/<platform>/` (set by `setup-env.sh`)
 
 ### Build Output
 
-`runtime-library/build/<PLATFORM>/bin/` — self-contained: `libRuntimeLibrary.so` + bundled TRT + CUDA libs
+`runtime-library/build/NVIDIA/<arch>/<march>/Ubuntu/<libc>/library-cuda_<N>.tar.gz` — archive of `bin/` containing `libRuntimeLibrary.so` + bundled TRT + CUDA libs
 
 ### CI Artifacts (S3)
 
