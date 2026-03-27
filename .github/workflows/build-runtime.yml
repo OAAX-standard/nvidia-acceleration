@@ -18,7 +18,7 @@ jobs:
       image: ubuntu:22.04
       options: >-
         --volume /var/run/docker.sock:/var/run/docker.sock
-        --volume /home/github-runner/nvidia-acceleration-deps:/home/github-runner/nvidia-acceleration-deps
+        --volume ${{ secrets.DEPS_DIR }}:${{ secrets.DEPS_DIR }}
 
     steps:
       - name: Set up Docker image
@@ -46,7 +46,7 @@ jobs:
           fi
 
       - name: Link pre-cached deps
-        run: ln -s /home/github-runner/nvidia-acceleration-deps .deps
+        run: ln -s ${{ secrets.DEPS_DIR }} .deps
 
       - name: Determine version
         run: |
