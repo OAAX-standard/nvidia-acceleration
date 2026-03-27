@@ -18,7 +18,7 @@ jobs:
       image: ubuntu:22.04
       options: >-
         --volume /var/run/docker.sock:/var/run/docker.sock
-        --volume ${{ secrets.NVIDIA_DEPS_DIR }}:${{ secrets.NVIDIA_DEPS_DIR }}
+        --volume ${{ vars.NVIDIA_DEPS_DIR }}:${{ vars.NVIDIA_DEPS_DIR }}
 
     steps:
       - name: Set up Docker image
