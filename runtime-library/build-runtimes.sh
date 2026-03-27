@@ -103,10 +103,12 @@ if [ ! -d "$CUDA_DIR/include" ]; then
     exit 1
 fi
 
-echo "Building: PLATFORM=$PLATFORM  VERSION=$VERSION  BUILD_TYPE=$BUILD_TYPE"
-echo "          CUDA_VERSION=$CUDA_VERSION  MARCH=${MARCH:-<default>}"
-echo "          TRT_DIR=$TRT_DIR"
-echo "          CUDA_DIR=$CUDA_DIR"
+# Map PLATFORM to artifact path components
+case "$PLATFORM" in
+    X86_64)         arch="x86_64";  libc="glibc2.35" ;;
+    AARCH64_JETSON) arch="aarch64"; libc="glibc2.34" ;;
+    AARCH64_SBSA)   arch="aarch64"; libc="glibc2.38" ;;
+esac
 
 # MARCH defaults are applied by CMakeLists.txt if not set here
 MARCH_CMAKE_ARG=""
@@ -114,7 +116,15 @@ if [ -n "$MARCH" ]; then
     MARCH_CMAKE_ARG="-DMARCH=${MARCH}"
 fi
 
-BUILD_DIR="build/${PLATFORM}/cuda-${CUDA_VERSION}/${MARCH:-default}"
+ARTIFACT="library-cuda_${CUDA_VERSION}"
+BUILD_DIR="build/NVIDIA/${arch}/${MARCH:-default}/Ubuntu/${libc}/${ARTIFACT}"
+
+echo "Building: PLATFORM=$PLATFORM  VERSION=$VERSION  BUILD_TYPE=$BUILD_TYPE"
+echo "          CUDA_VERSION=$CUDA_VERSION  MARCH=${MARCH:-<default>}"
+echo "          TRT_DIR=$TRT_DIR"
+echo "          CUDA_DIR=$CUDA_DIR"
+echo "          Output: runtime-library/${BUILD_DIR}.tar.gz"
+
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
@@ -126,8 +136,11 @@ cmake \
     -DTRT_DIR="$TRT_DIR" \
     -DCUDA_DIR="$CUDA_DIR" \
     $MARCH_CMAKE_ARG \
-    ../../../..
+    "${REPO_ROOT}/runtime-library"
 
 make -j"$(nproc)"
 
-echo "Build complete. Output: runtime-library/${BUILD_DIR}/bin/"
+# Package bin/ into an archive next to the build directory
+cd ..
+tar czf "${ARTIFACT}.tar.gz" -C "${ARTIFACT}" bin/
+echo "Build complete. Archive: runtime-library/${BUILD_DIR}.tar.gz"
