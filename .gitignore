@@ -21,3 +21,4 @@ devices.md
 *.log
 *.jpg
 *.mp4
+tests/artifacts/
