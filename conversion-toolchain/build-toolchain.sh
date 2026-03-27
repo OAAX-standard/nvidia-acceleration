@@ -13,4 +13,4 @@ rm -rf artifacts 2>/dev/null || true
 mkdir artifacts
 
 docker build -t oaax-nvidia-tensorrt-toolchain:$VERSION .
-docker save oaax-nvidia-tensorrt-toolchain:$VERSION -o ./artifacts/oaax-nvidia-tensorrt-toolchain-$VERSION.tar
+docker save oaax-nvidia-tensorrt-toolchain:$VERSION -o ./artifacts/oaax-nvidia-tensorrt-toolchain.tar
