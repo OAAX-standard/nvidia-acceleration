@@ -21,14 +21,30 @@ for arg in "$@"; do
     [ "$arg" = "--force" ] && FORCE=true
 done
 
+export DEBIAN_FRONTEND=noninteractive
+sudo apt-get update -y
+sudo apt-get install -y wget curl build-essential python3 xz-utils
+
+# ── CMake ─────────────────────────────────────────────────────────────────────
+if ! command -v cmake &>/dev/null || [ "$(cmake --version | head -1 | awk '{print $3}')" \< "3.14" ]; then
+    host_platform=$(uname -m)
+    wget -q "https://cmake.org/files/v3.31/cmake-3.31.7-linux-${host_platform}.sh" \
+        -O /tmp/cmake-install.sh
+    chmod u+x /tmp/cmake-install.sh
+    mkdir -p /opt/cmake-3.31.7
+    /tmp/cmake-install.sh --skip-license --prefix=/opt/cmake-3.31.7
+    rm /tmp/cmake-install.sh
+    ln -fs /opt/cmake-3.31.7/bin/* /usr/local/bin
+    echo "CMake installed."
+else
+    echo "CMake already available: $(cmake --version | head -1)"
+fi
+
 if [ "$FORCE" = false ] && [ -f "$STAMP_FILE" ]; then
     echo "Environment already set up (remove .deps/.setup-complete or use --force to re-run)."
     exit 0
 fi
 
-export DEBIAN_FRONTEND=noninteractive
-sudo apt-get update -y
-sudo apt-get install -y wget curl build-essential python3 xz-utils
 
 mkdir -p "${DEPS_DIR}/toolchains"
 
@@ -54,21 +70,6 @@ for name in "${!TOOLCHAINS[@]}"; do
     rm -f "/tmp/${filename}"
     echo "Extracted: ${name}"
 done
-
-# ── CMake ─────────────────────────────────────────────────────────────────────
-if ! command -v cmake &>/dev/null || [ "$(cmake --version | head -1 | awk '{print $3}')" \< "3.14" ]; then
-    host_platform=$(uname -m)
-    wget -q "https://cmake.org/files/v3.31/cmake-3.31.7-linux-${host_platform}.sh" \
-        -O /tmp/cmake-install.sh
-    chmod u+x /tmp/cmake-install.sh
-    mkdir -p /opt/cmake-3.31.7
-    /tmp/cmake-install.sh --skip-license --prefix=/opt/cmake-3.31.7
-    rm /tmp/cmake-install.sh
-    ln -fs /opt/cmake-3.31.7/bin/* /usr/local/bin
-    echo "CMake installed."
-else
-    echo "CMake already available: $(cmake --version | head -1)"
-fi
 
 # ── CUDA ──────────────────────────────────────────────────────────────────────
 echo "Downloading CUDA components..."
