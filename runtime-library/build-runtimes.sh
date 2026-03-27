@@ -1,5 +1,6 @@
 set -e
 
+SCRIPT_PATH="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 cd "$(dirname "$0")"
 REPO_ROOT="$(cd ".." && pwd)"
 DEPS_DIR="${REPO_ROOT}/.deps"
@@ -32,7 +33,7 @@ if [ -z "$PLATFORM" ] || [ -z "$CUDA_VERSION" ]; then
         [ -n "$PLATFORM" ] && [ "$PLATFORM" != "$plat" ] && continue
         [ -n "$CUDA_VERSION" ] && [ "$CUDA_VERSION" != "$cuda" ] && continue
         for march in $marches; do
-            PLATFORM=$plat CUDA_VERSION=$cuda MARCH=$march bash "$0"
+            PLATFORM=$plat CUDA_VERSION=$cuda MARCH=$march bash "$SCRIPT_PATH"
         done
     done
     exit 0
