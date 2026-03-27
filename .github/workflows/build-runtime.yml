@@ -1,6 +1,6 @@
 name: Build OAAX runtime
 permissions:
-  contents: none
+  contents: read
 
 on:
   push:
@@ -50,8 +50,6 @@ jobs:
 
       - name: Build all runtimes
         run: |
-          pwd
-          tree -h
           bash runtime-library/build-runtimes.sh
 
       - name: Configure s3cmd
