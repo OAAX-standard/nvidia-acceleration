@@ -10,4 +10,6 @@ COPY scripts/ /app/scripts
 RUN pip install --no-cache-dir uv && \
     uv sync --frozen --no-dev
 
+ENV PATH="/app/.venv/bin:$PATH"
+
 ENTRYPOINT ["bash", "/app/scripts/convert.sh"]

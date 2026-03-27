@@ -28,23 +28,29 @@ An ONNX model is compiled into a TensorRT engine at conversion time, targeting t
 
 ## Development machine
 
-Two activities happen on the development machine: building the toolchain image and cross-compiling the runtime library. Running a model conversion also happens here and additionally requires a GPU.
+Two activities happen on the development machine: building the toolchain image and cross-compiling the runtime library. No GPU is required.
 
 | Activity | Requirements |
 |---|---|
 | Build toolchain Docker image | Linux, Docker |
-| Run model conversion | Linux, NVIDIA GPU + driver, Docker, nvidia-container-toolkit |
 | Cross-compile runtime library | Linux x86_64, CMake ≥ 3.14, cross-compilation toolchains, TensorRT and CUDA from [developer.nvidia.com](https://developer.nvidia.com) |
 
 See each component's README for full setup instructions.
 
 ## Deployment machine
 
-The runtime library output is self-contained — the `bin/` directory bundles all required shared libraries. No TensorRT or CUDA installation is needed on the deployment machine.
+Model conversion and inference both run on the deployment machine. TensorRT profiles and compiles kernels against the actual GPU at conversion time, so the engine is always optimal for the hardware it runs on.
+
+| Activity | Requirements |
+|---|---|
+| Convert ONNX → `.trt` | NVIDIA GPU + driver ≥ 525, Docker, nvidia-container-toolkit, toolchain image |
+| Run inference | NVIDIA GPU + driver ≥ 525 |
+
+The runtime library is self-contained — the `bin/` directory bundles all required shared libraries. No separate TensorRT or CUDA installation is needed.
 
 | Requirement | Notes |
 |---|---|
-| Linux (x86_64 or aarch64) | Must match the build platform |
-| NVIDIA GPU | Must match the `gpu_architecture` used at conversion time |
+| Linux (x86_64 or aarch64) | Must match the build `PLATFORM` |
+| NVIDIA GPU | Any SM ≥ 7.5 supported by TensorRT 10 |
 | NVIDIA driver ≥ 525 | Required by TensorRT 10 |
 | glibc ≥ 2.17 | Satisfied by any modern Linux distribution |

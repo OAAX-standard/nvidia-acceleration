@@ -1,6 +1,6 @@
 # Conversion Toolchain
 
-Compiles an ONNX model into a TensorRT engine (`.trt`) optimised for a specific NVIDIA GPU architecture. The engine is produced at conversion time — TensorRT profiles and compiles kernels against real hardware, so a physical GPU is required when **running** the toolchain.
+Compiles an ONNX model into a TensorRT engine (`.trt`) optimised for the GPU it runs on. TensorRT profiles and compiles kernels against the actual hardware at conversion time, so **the toolchain must run on the deployment machine** (or a machine with an identical GPU). This guarantees the engine is fully optimised for the target hardware with no portability trade-offs.
 
 ## Build the toolchain image
 
@@ -60,7 +60,7 @@ bundle.zip
 
 | Field | Required | Values | Description |
 |---|---|---|---|
-| `gpu_architecture` | Yes | e.g. `sm_86` | Compute capability of the **inference** GPU |
+| `gpu_architecture` | Yes | e.g. `sm_86` | Compute capability of the GPU running the conversion |
 | `precision` | Yes | `fp32`, `fp16`, `int8` | Inference precision |
 | `workspace_gb` | No | integer | TensorRT workspace memory limit in GB (default: 4) |
 

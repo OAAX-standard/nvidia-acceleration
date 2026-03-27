@@ -4,7 +4,7 @@
 
 NVIDIA GPU implementation of the [OAAX standard](https://github.com/OAAX-standard/OAAX) using native TensorRT inference. Two deliverables:
 
-1. **Conversion Toolchain** (`conversion-toolchain/`) — Docker image that compiles an ONNX model into a `.trt` engine at conversion time (GPU required).
+1. **Conversion Toolchain** (`conversion-toolchain/`) — Docker image that compiles an ONNX model into a `.trt` engine. Runs on the deployment machine — TensorRT targets the GPU that is physically present.
 2. **Runtime Library** (`runtime-library/`) — C++ shared library (`libRuntimeLibrary.so`) implementing the OAAX C API using TensorRT directly.
 
 ---
@@ -77,11 +77,12 @@ for (int i = 0; i < engine->getNbIOTensors(); i++)
 
 ## Conversion Toolchain
 
+- Runs on the **deployment machine** — TensorRT targets the GPU that is physically present
 - Input: zip archive with `model.onnx` + `config.json` (`gpu_architecture`, `precision`, `workspace_gb`)
-- Processing: `trtexec --onnx=model.onnx --saveEngine=model.trt [--fp16|--int8] --buildOnly`
+- Processing: `trtexec --onnx=model.onnx --saveEngine=model.trt [--fp16|--int8] --skipInference`
 - Output: `model.trt` + `logs.json`
 - For int8: calibration images in `calib/` + `preprocessing` config (mean/std)
-- GPU required at conversion time; engine is **not** portable across GPU architectures
+- Engine is **not** portable across GPU architectures or CPU platforms (x86_64 ≠ aarch64)
 
 ---
 
@@ -113,8 +114,8 @@ for (int i = 0; i < engine->getNbIOTensors(); i++)
 
 ## Known Limitations
 
-1. **GPU required at conversion time** — TensorRT compiles kernels against real hardware.
-2. **Engine not portable** — must rebuild for each target GPU architecture.
+1. **Conversion runs on the deployment machine** — TensorRT requires the target GPU to be physically present to compile kernels; no cross-compilation of engines.
+2. **Engine not portable** — a `.trt` engine is tied to the GPU architecture and CPU platform it was built on; must reconvert for each target.
 3. **Fixed batch size** — dynamic shapes not supported in v1; batch size is fixed at 1.
 4. **Single GPU only** — hardcoded `device_id = 0`.
 5. **Polling latency** — inference thread sleeps 10ms when idle; `receive_output` sleeps 100ms when no output is ready.
