@@ -2,13 +2,20 @@ import os
 
 # Resolved at build time by setuptools (pyproject.toml: dynamic version = {attr = ...}).
 # Falls back to "dev" when running from source without installing.
-try:
-    _version_file = os.path.join(os.path.dirname(__file__), '..', '..', 'VERSION')
-    with open(_version_file) as _f:
-        __version__ = _f.read().strip()
-except FileNotFoundError:
+def _find_version():
+    _here = os.path.dirname(__file__)
+    # Check ../VERSION (Docker: /app/VERSION) then ../../VERSION (dev source tree)
+    for rel in ('..', '../..'):
+        candidate = os.path.join(_here, rel, 'VERSION')
+        try:
+            with open(candidate) as _f:
+                return _f.read().strip()
+        except FileNotFoundError:
+            continue
     try:
         from importlib.metadata import version
-        __version__ = version('oaax-nvidia-tensorrt-conversion')
+        return version('oaax-nvidia-tensorrt-conversion')
     except Exception:
-        __version__ = 'dev'
+        return 'dev'
+
+__version__ = _find_version()

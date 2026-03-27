@@ -1,0 +1,10 @@
+.deps/
+.git/
+build/
+artifacts/
+runtime-library/build/
+conversion-toolchain/artifacts/
+tensorrt-archives/
+*.log
+*.jpg
+*.mp4
