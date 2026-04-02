@@ -14,15 +14,16 @@ VERSION=$(<"$VERSION_FILE")
 
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 
-# Full build matrix: "PLATFORM:CUDA_VERSION:march1 march2 ..."
+# Full build matrix: "PLATFORM:CUDA_VERSION:march"
+# One march per platform — inference runs on GPU so CPU micro-arch tuning is unnecessary.
 # AARCH64_JETSON (Jetson): CUDA 12 only — no linux-aarch64 in CUDA 13 redistrib.
 # AARCH64_SBSA (DGX Spark/Grace): CUDA 12 and 13 both have SBSA TRT packages.
 MATRIX=(
-    "X86_64:12:x86-64 x86-64-v3 x86-64-v4"
-    "X86_64:13:x86-64 x86-64-v3 x86-64-v4"
-    "AARCH64_JETSON:12:armv8-a armv8.2-a+fp16+dotprod"
-    "AARCH64_SBSA:12:armv8-a armv9-a"
-    "AARCH64_SBSA:13:armv8-a armv9-a"
+    "X86_64:12:x86-64"
+    "X86_64:13:x86-64"
+    "AARCH64_JETSON:12:armv8-a"
+    "AARCH64_SBSA:12:armv8-a"
+    "AARCH64_SBSA:13:armv8-a"
 )
 
 # If PLATFORM or CUDA_VERSION is unset, iterate over the matrix.
@@ -106,9 +107,9 @@ fi
 
 # Map PLATFORM to artifact path components
 case "$PLATFORM" in
-    X86_64)         arch="x86_64";  libc="glibc2.35" ;;
-    AARCH64_JETSON) arch="aarch64"; libc="glibc2.34" ;;
-    AARCH64_SBSA)   arch="aarch64"; libc="glibc2.38" ;;
+    X86_64)         arch="x86_64";  ubuntu="Ubuntu22.04" ;;
+    AARCH64_JETSON) arch="aarch64"; ubuntu="Ubuntu22.04" ;;
+    AARCH64_SBSA)   arch="aarch64"; ubuntu="Ubuntu24.04" ;;
 esac
 
 # MARCH defaults are applied by CMakeLists.txt if not set here
@@ -118,13 +119,13 @@ if [ -n "$MARCH" ]; then
 fi
 
 ARTIFACT="library-cuda_${CUDA_VERSION}"
-BUILD_DIR="build/NVIDIA/${arch}/${MARCH:-default}/Ubuntu/${libc}/${ARTIFACT}"
+BUILD_DIR="build/NVIDIA/${arch}/${ubuntu}/${ARTIFACT}"
 
 echo "Building: PLATFORM=$PLATFORM  VERSION=$VERSION  BUILD_TYPE=$BUILD_TYPE"
 echo "          CUDA_VERSION=$CUDA_VERSION  MARCH=${MARCH:-<default>}"
 echo "          TRT_DIR=$TRT_DIR"
 echo "          CUDA_DIR=$CUDA_DIR"
-echo "          Output: runtime-library/${BUILD_DIR}.tar.gz"
+echo "          Ubuntu: ${ubuntu}  Output: runtime-library/${BUILD_DIR}.tar.gz"
 
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
@@ -141,7 +142,7 @@ cmake \
 
 make -j"$(nproc)"
 
-# Package bin/ into an archive next to the build directory
+# Package libraries directly into the archive (no bin/ subdirectory)
 cd ..
-tar czf "${ARTIFACT}.tar.gz" -C "${ARTIFACT}" bin/
+tar czf "${ARTIFACT}.tar.gz" -C "${ARTIFACT}/bin" .
 echo "Build complete. Archive: runtime-library/${BUILD_DIR}.tar.gz"

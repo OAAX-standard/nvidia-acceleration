@@ -92,9 +92,9 @@ for (int i = 0; i < engine->getNbIOTensors(); i++)
 
 | PLATFORM | Target | Toolchain |
 |---|---|---|
-| `X86_64` | Linux x86_64 | `.deps/toolchains/x86-64-v2--glibc--stable-2022.08-1` |
-| `AARCH64_JETSON` | Jetson / JetPack | `.deps/toolchains/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu` |
-| `AARCH64_SBSA` | DGX Spark / Grace | `.deps/toolchains/arm-gnu-toolchain-13.2.Rel1-x86_64-aarch64-none-linux-gnu` |
+| `X86_64` | Linux x86_64 (`x86-64`) | `.deps/toolchains/x86-64-v2--glibc--stable-2022.08-1` |
+| `AARCH64_JETSON` | Jetson / JetPack (`armv8-a`) | `.deps/toolchains/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu` |
+| `AARCH64_SBSA` | DGX Spark / Grace (`armv8-a`) | `.deps/toolchains/arm-gnu-toolchain-13.2.Rel1-x86_64-aarch64-none-linux-gnu` |
 
 ### External Dependencies (not in repo)
 
@@ -103,11 +103,11 @@ for (int i = 0; i < engine->getNbIOTensors(); i++)
 
 ### Build Output
 
-`runtime-library/build/NVIDIA/<arch>/<march>/Ubuntu/<libc>/library-cuda_<N>.tar.gz` — archive of `bin/` containing `libRuntimeLibrary.so` + bundled TRT + CUDA libs
+`runtime-library/build/NVIDIA/<arch>/<ubuntu>/library-cuda_<N>.tar.gz` — archive of `bin/` containing `libRuntimeLibrary.so` + bundled TRT + CUDA libs
 
 ### CI Artifacts (S3)
 
-- Runtime: `s3://oaax/runtimes/<version>/NVIDIA/<arch>/<march>/Ubuntu/<libc>/library-cuda_<N>.tar.gz`
+- Runtime: `s3://oaax/runtimes/<version>/NVIDIA/<arch>/<ubuntu>/library-cuda_<N>.tar.gz`
 - Toolchain: `s3://oaax/conversion-toolchain/<version>/NVIDIA/oaax-nvidia-tensorrt-toolchain.tar`
 
 ---

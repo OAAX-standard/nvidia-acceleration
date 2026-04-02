@@ -8,8 +8,9 @@ def cli():
     args = parser.parse_args()
 
     import os
+    import platform
     import tempfile
-    from .utils import unzip_input, validate_config, check_nvidia_dependencies, detect_gpu_architecture, run_trtexec, build_int8_engine, md5_hash
+    from .utils import unzip_input, validate_config, check_nvidia_dependencies, detect_gpu_architecture, run_trtexec, build_int8_engine, md5_hash, build_mime_type
     from .logger import Logs
 
     logs = Logs()
@@ -45,7 +46,7 @@ def cli():
         else:
             run_trtexec(onnx_path, output_trt_path, config, logs)
 
-    mime_type = 'application/x-tensorrt'
+    mime_type = build_mime_type(gpu_arch, platform.machine())
     logs_path = os.path.join(args.output_dir, 'logs.json')
 
     logs.add_message('Successful Conversion', {

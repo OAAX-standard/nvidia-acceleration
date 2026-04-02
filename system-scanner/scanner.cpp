@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cstdio>
 #include <fstream>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -223,21 +222,8 @@ static std::string detect_aarch64_platform() {
     return "aarch64";
 }
 
-// Returns the -march value that matches the available tarballs for this platform.
-static std::string detect_aarch64_march(const std::string& platform) {
-    if (platform == "jetson")
-        return "armv8.2-a+fp16+dotprod";
-
-    if (platform == "sbsa") {
-        // Any Neoverse part maps to armv9-a (the closest available tarball).
-        // Neoverse V3/V3AE (armv9.2-a) are backward-compatible with armv9-a binaries.
-        std::string cpuinfo = read_text("/proc/cpuinfo");
-        for (const auto& part : NEOVERSE_PARTS)
-            if (cpuinfo.find(part) != std::string::npos)
-                return "armv9-a";
-        return "armv8-a";
-    }
-
+// All aarch64 builds use armv8-a; this is kept for diagnostic output only.
+static std::string detect_aarch64_march(const std::string&) {
     return "armv8-a";
 }
 
@@ -246,64 +232,36 @@ static std::string detect_aarch64_march(const std::string& platform) {
 // ---------------------------------------------------------------------------
 
 struct Tarball {
-    std::string arch;
-    std::string march;
-    std::string glibc;   // minimum glibc of the build — "2.34", "2.35", "2.38"
+    std::string platform;   // "x86_64", "jetson", "sbsa"
+    std::string ubuntu;     // path label: "Ubuntu22.04", "Ubuntu24.04"
+    std::string min_glibc;  // minimum glibc required by this build
     int         cuda;
 };
 
 // Catalog of published runtime tarballs.
 // Add new entries here when new builds are released.
 static const std::vector<Tarball> CATALOG = {
-    {"x86_64",  "x86-64",                 "2.35", 12},
-    {"x86_64",  "x86-64",                 "2.35", 13},
-    {"x86_64",  "x86-64-v3",              "2.35", 12},
-    {"x86_64",  "x86-64-v3",              "2.35", 13},
-    {"x86_64",  "x86-64-v4",              "2.35", 12},
-    {"x86_64",  "x86-64-v4",              "2.35", 13},
-    {"aarch64", "armv8-a",                "2.34", 12},
-    {"aarch64", "armv8-a",                "2.38", 12},
-    {"aarch64", "armv8-a",                "2.38", 13},
-    {"aarch64", "armv9-a",                "2.38", 12},
-    {"aarch64", "armv9-a",                "2.38", 13},
-    {"aarch64", "armv8.2-a+fp16+dotprod", "2.34", 12},
+    {"x86_64", "Ubuntu22.04", "2.35", 12},
+    {"x86_64", "Ubuntu22.04", "2.35", 13},
+    {"jetson",  "Ubuntu22.04", "2.35", 12},
+    {"sbsa",    "Ubuntu24.04", "2.38", 12},
+    {"sbsa",    "Ubuntu24.04", "2.38", 13},
 };
 
 static std::string select_runtime(
-    const std::string& arch, const std::string& march,
-    const std::string& glibc, int cuda_major)
+    const std::string& platform, const std::string& glibc, int cuda_major)
 {
-    // x86-64-v2 has no dedicated tarball — fall back to baseline
-    const std::string effective_march = (march == "x86-64-v2") ? "x86-64" : march;
+    const std::string arch = (platform == "x86_64") ? "x86_64" : "aarch64";
 
     // Cap at the highest available CUDA major (13)
     const int cuda = std::min(cuda_major, 13);
 
-    // Collect glibc versions available for this arch + march
-    std::set<std::string> available_glibcs;
-    for (const auto& t : CATALOG)
-        if (t.arch == arch && t.march == effective_march)
-            available_glibcs.insert(t.glibc);
-
-    if (available_glibcs.empty()) return "";
-
-    // Pick the highest glibc version that the system satisfies
-    std::string best_glibc;
-    for (const auto& g : available_glibcs)
-        if (ver_ge(glibc, g) && (best_glibc.empty() || ver_ge(g, best_glibc)))
-            best_glibc = g;
-
-    if (best_glibc.empty()) return "";
-
-    // Prefer the detected CUDA version; fall back to cuda_12 if not available
+    // Find a compatible entry: same platform, system glibc satisfies the minimum
+    // Prefer the detected CUDA version; fall back to cuda 12 if not available
     for (int c : {cuda, 12}) {
         for (const auto& t : CATALOG) {
-            if (t.arch == arch && t.march == effective_march
-                    && t.glibc == best_glibc && t.cuda == c) {
-                return arch + "/" + effective_march
-                     + "/Ubuntu/glibc" + best_glibc
-                     + "/library-cuda_" + std::to_string(c) + ".tar.gz";
-            }
+            if (t.platform == platform && t.cuda == c && ver_ge(glibc, t.min_glibc))
+                return arch + "/" + t.ubuntu + "/library-cuda_" + std::to_string(c) + ".tar.gz";
         }
     }
 
@@ -362,12 +320,12 @@ ScanResult scan_system() {
     }
 
     r.recommended_runtime =
-        select_runtime(r.architecture, r.cpu_march, r.glibc_version, r.cuda_major);
+        select_runtime(r.platform, r.glibc_version, r.cuda_major);
 
     if (r.recommended_runtime.empty()) {
         r.unsupported_reason =
             "No compatible runtime tarball found for this configuration ("
-            + r.architecture + ", " + r.cpu_march
+            + r.platform
             + ", glibc " + r.glibc_version
             + ", CUDA "  + std::to_string(r.cuda_major) + ")";
         return r;

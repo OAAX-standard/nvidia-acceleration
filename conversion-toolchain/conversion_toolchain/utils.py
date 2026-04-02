@@ -551,3 +551,19 @@ def md5_hash(file_path: str) -> str:
         for chunk in iter(lambda: f.read(8192), b''):
             h.update(chunk)
     return h.hexdigest()
+
+
+def build_mime_type(gpu_arch: str, cpu_arch: str) -> str:
+    """Build the MIME type string for a TensorRT engine.
+
+    Args:
+        gpu_arch: GPU architecture in 'sm_XY' format (from detect_gpu_architecture).
+        cpu_arch: CPU architecture string, e.g. 'x86_64' or 'aarch64'.
+
+    Returns:
+        e.g. 'application/vnd.oaax.tensorrt; arch=x86_64; sm=86; trt=10'
+    """
+    sm = gpu_arch.replace('sm_', '')
+    trt_ver = _trtexec_version()
+    trt_major = trt_ver[0] if trt_ver else _RUNTIME_TRT_VERSION[0]
+    return f'application/x-tensorrt; arch={cpu_arch}; sm={sm}; trt={trt_major}'

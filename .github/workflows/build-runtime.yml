@@ -68,7 +68,7 @@ jobs:
         run: |
           version=${{ env.version }}
           find runtime-library/build/NVIDIA -name "library-cuda_*.tar.gz" | while read -r archive; do
-            # archive path: runtime-library/build/NVIDIA/<arch>/<march>/Ubuntu/<libc>/library-cuda_<N>.tar.gz
+            # archive path: runtime-library/build/NVIDIA/<arch>/<ubuntu>/library-cuda_<N>.tar.gz
             rel="${archive#runtime-library/build/}"
             s3cmd put "$archive" "s3://oaax/runtimes/${version}/${rel}"
           done
