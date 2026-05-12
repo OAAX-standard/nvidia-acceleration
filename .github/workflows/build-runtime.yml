@@ -34,7 +34,7 @@ jobs:
           fetch-depth: 1
 
       - name: Link pre-cached deps
-        run: ln -fs ${{ secrets.NVIDIA_DEPS_DIR }} .deps
+        run: ln -fs ${{ vars.NVIDIA_DEPS_DIR }} .deps
 
       - name: Install env deps
         run: bash scripts/setup-env.sh
@@ -50,7 +50,7 @@ jobs:
 
       - name: Build all runtimes
         run: |
-          bash runtime-library/build-runtimes.sh
+          bash tensorrt/runtime-library/build-runtimes.sh
 
       - name: Configure s3cmd
         run: |
@@ -67,12 +67,12 @@ jobs:
       - name: Upload runtimes to S3
         run: |
           version=${{ env.version }}
-          find runtime-library/build/NVIDIA -name "library-cuda_*.tar.gz" | while read -r archive; do
-            # archive path: runtime-library/build/NVIDIA/<arch>/<ubuntu>/library-cuda_<N>.tar.gz
-            rel="${archive#runtime-library/build/}"
+          find tensorrt/runtime-library/build/NVIDIA_TENSORRT -name "library-cuda_*.tar.gz" | while read -r archive; do
+            # archive path: tensorrt/runtime-library/build/NVIDIA_TENSORRT/<arch>/Ubuntu/<ubuntu_version>/library-cuda_<N>.tar.gz
+            rel="${archive#tensorrt/runtime-library/build/}"
             s3cmd put "$archive" "s3://oaax/runtimes/${version}/${rel}"
           done
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            s3cmd sync "s3://oaax/runtimes/${version}/NVIDIA/" \
-                       "s3://oaax/runtimes/latest/NVIDIA/"
+            s3cmd sync "s3://oaax/runtimes/${version}/NVIDIA_TENSORRT/" \
+                       "s3://oaax/runtimes/latest/NVIDIA_TENSORRT/"
           fi

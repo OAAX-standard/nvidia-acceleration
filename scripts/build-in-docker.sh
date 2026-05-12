@@ -65,8 +65,8 @@ docker run --rm \
             ln -fs /opt/cmake-3.31.7/bin/* /usr/local/bin
         fi
 
-        bash runtime-library/build-runtimes.sh
+        bash tensorrt/runtime-library/build-runtimes.sh
     '
 
 echo ""
-echo "Build complete. Artifacts in runtime-library/build/NVIDIA/"
+echo "Build complete. Artifacts in tensorrt/runtime-library/build/NVIDIA_TENSORRT/"

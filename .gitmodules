@@ -1,0 +1,9 @@
+[submodule "onnxruntime/runtime-library/deps/tools"]
+	path = onnxruntime/runtime-library/deps/tools
+	url = https://github.com/OAAX-standard/tools
+[submodule "onnxruntime/runtime-library/deps/spdlog"]
+	path = onnxruntime/runtime-library/deps/spdlog
+	url = https://github.com/gabime/spdlog
+[submodule "onnxruntime/runtime-library/deps/concurrentqueue"]
+	path = onnxruntime/runtime-library/deps/concurrentqueue
+	url = https://github.com/cameron314/concurrentqueue

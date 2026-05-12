@@ -1,6 +1,6 @@
 name: Build OAAX conversion toolchain
 permissions:
-  contents: none
+  contents: read
 
 on:
   push:
@@ -58,7 +58,7 @@ jobs:
           apt-get install -y s3cmd docker.io
 
       - name: Build conversion toolchain image
-        run: bash conversion-toolchain/build-toolchain.sh
+        run: bash tensorrt/conversion-toolchain/build-toolchain.sh
 
       - name: Configure s3cmd
         run: |
@@ -75,7 +75,7 @@ jobs:
       - name: Upload toolchain image to S3
         run: |
           version=${{ needs.determine-version.outputs.version }}
-          s3cmd put "conversion-toolchain/artifacts/oaax-nvidia-tensorrt-toolchain.tar" \
+          s3cmd put "tensorrt/conversion-toolchain/artifacts/oaax-nvidia-tensorrt-toolchain.tar" \
             "s3://oaax/conversion-toolchain/${version}/NVIDIA/oaax-nvidia-tensorrt-toolchain.tar"
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             s3cmd cp \
@@ -103,7 +103,7 @@ jobs:
           apt-get install -y python3 python3-pip python3-venv python3-build s3cmd
 
       - name: Build wheel
-        run: bash conversion-toolchain/build-wheel.sh
+        run: bash tensorrt/conversion-toolchain/build-wheel.sh
 
       - name: Configure s3cmd
         run: |
@@ -120,7 +120,7 @@ jobs:
       - name: Upload wheel to S3
         run: |
           version=${{ needs.determine-version.outputs.version }}
-          whl=$(ls conversion-toolchain/artifacts/*.whl)
+          whl=$(ls tensorrt/conversion-toolchain/artifacts/*.whl)
           whl_name=$(basename "$whl")
           s3cmd put "$whl" \
             "s3://oaax/conversion-toolchain/${version}/NVIDIA/${whl_name}"

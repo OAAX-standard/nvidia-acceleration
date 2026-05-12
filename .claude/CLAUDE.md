@@ -1,11 +1,15 @@
-# nvidia-acceleration — OAAX Runtime for NVIDIA GPUs (TensorRT-native)
+# nvidia-acceleration — OAAX Runtime for NVIDIA GPUs
 
 ## What This Repo Is
 
-NVIDIA GPU implementation of the [OAAX standard](https://github.com/OAAX-standard/OAAX) using native TensorRT inference. Two deliverables:
+NVIDIA GPU implementation of the [OAAX standard](https://github.com/OAAX-standard/OAAX) with two backends, each in its own top-level folder:
 
-1. **Conversion Toolchain** (`conversion-toolchain/`) — Docker image that compiles an ONNX model into a `.trt` engine. Runs on the deployment machine — TensorRT targets the GPU that is physically present.
-2. **Runtime Library** (`runtime-library/`) — C++ shared library (`libRuntimeLibrary.so`) implementing the OAAX C API using TensorRT directly.
+- **`tensorrt/`** — Native TensorRT inference (no ONNX Runtime); compiles ONNX to `.trt` engine on the deployment machine.
+- **`onnxruntime/`** — ONNX Runtime + CUDA Execution Provider; uses pre-built ORT libraries.
+
+Each backend has two deliverables:
+1. **`conversion-toolchain/`** — Docker image that prepares the model for inference.
+2. **`runtime-library/`** — C++ shared library (`libRuntimeLibrary.so`) implementing the OAAX C API.
 
 ---
 
@@ -13,29 +17,42 @@ NVIDIA GPU implementation of the [OAAX standard](https://github.com/OAAX-standar
 
 ```
 nvidia-acceleration/
-├── conversion-toolchain/
-│   ├── Dockerfile                        # nvcr.io/nvidia/tensorrt:26.03-py3 base
-│   ├── build-toolchain.sh                # builds and saves Docker image
-│   ├── conversion_toolchain/
-│   │   ├── main.py                       # unzip → validate → trtexec
-│   │   ├── utils.py                      # int8 calibration helpers
-│   │   └── logger.py                     # structured JSON logging
-│   └── scripts/convert.sh               # Docker entrypoint
-├── runtime-library/
-│   ├── CMakeLists.txt                    # cross-compilation build; requires TRT_DIR, CUDA_DIR
-│   ├── build-runtimes.sh                 # build script; requires TRT_DIR, CUDA_DIR, PLATFORM
-│   ├── src/
-│   │   ├── runtime_core.cpp             # OAAX API: init, model_loading, send_input, receive_output
-│   │   └── runtime_utils.cpp            # logging, TRT→OAAX type mapping, queue helpers
-│   ├── include/
-│   │   ├── runtime_core.hpp
-│   │   └── runtime_utils.hpp
-│   └── test/test_runtime.c              # standalone C test (run inside toolchain container)
+├── tensorrt/
+│   ├── conversion-toolchain/
+│   │   ├── Dockerfile                    # nvcr.io/nvidia/tensorrt:26.03-py3 base
+│   │   ├── build-toolchain.sh            # builds and saves Docker image (uses repo root as context)
+│   │   ├── conversion_toolchain/
+│   │   │   ├── main.py                   # unzip → validate → trtexec
+│   │   │   ├── utils.py                  # int8 calibration helpers
+│   │   │   └── logger.py                 # structured JSON logging
+│   │   └── scripts/convert.sh           # Docker entrypoint
+│   └── runtime-library/
+│       ├── CMakeLists.txt                # cross-compilation build; requires TRT_DIR, CUDA_DIR
+│       ├── build-runtimes.sh             # build script; requires TRT_DIR, CUDA_DIR, PLATFORM
+│       ├── src/
+│       │   ├── runtime_core.cpp         # OAAX API: init, model_loading, send_input, receive_output
+│       │   └── runtime_utils.cpp        # logging, TRT→OAAX type mapping, queue helpers
+│       ├── include/
+│       │   ├── runtime_core.hpp
+│       │   └── runtime_utils.hpp
+│       └── test/test_runtime.c          # standalone C test
+├── onnxruntime/
+│   ├── conversion-toolchain/
+│   │   ├── Dockerfile                    # python:3.8.16 base
+│   │   ├── build-toolchain.sh            # builds Docker image (local context)
+│   │   ├── conversion_toolchain/
+│   │   └── scripts/convert.sh
+│   └── runtime-library/
+│       ├── CMakeLists.txt
+│       ├── build-runtimes.sh
+│       ├── deps/                         # pre-built ORT + CUDA libs, cpuinfo, submodules
+│       ├── src/
+│       └── include/
 ├── scripts/
 │   └── setup-env.sh                     # CI env setup: toolchains, TRT archives, CUDA
 ├── .github/workflows/
-│   ├── build-runtime.yml                # builds X86_64, AARCH64_JETSON, AARCH64_SBSA; uploads to S3
-│   ├── build-toolchain.yml              # builds Docker image; uploads to S3
+│   ├── build-runtime.yml                # builds tensorrt/ runtimes; uploads to S3
+│   ├── build-toolchain.yml              # builds tensorrt/ toolchain; uploads to S3
 │   └── delete-temporary-artifacts.yml   # cleans S3 on PR close
 └── VERSION                              # semver, read by build scripts
 ```
@@ -93,8 +110,8 @@ for (int i = 0; i < engine->getNbIOTensors(); i++)
 | PLATFORM | Target | Toolchain |
 |---|---|---|
 | `X86_64` | Linux x86_64 (`x86-64`) | `.deps/toolchains/x86-64-v2--glibc--stable-2022.08-1` |
-| `AARCH64_JETSON` | Jetson / JetPack (`armv8-a`) | `.deps/toolchains/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu` |
-| `AARCH64_SBSA` | DGX Spark / Grace (`armv8-a`) | `.deps/toolchains/arm-gnu-toolchain-13.2.Rel1-x86_64-aarch64-none-linux-gnu` |
+| `AARCH64_JETSON` | Jetson / JetPack (`armv8-a`) → `aarch64-jetson` | `.deps/toolchains/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu` |
+| `AARCH64_SBSA` | DGX Spark / Grace (`armv8-a`) → `aarch64-sbsa` | `.deps/toolchains/arm-gnu-toolchain-13.2.Rel1-x86_64-aarch64-none-linux-gnu` |
 
 ### External Dependencies (not in repo)
 
@@ -103,11 +120,13 @@ for (int i = 0; i < engine->getNbIOTensors(); i++)
 
 ### Build Output
 
-`runtime-library/build/NVIDIA/<arch>/<ubuntu>/library-cuda_<N>.tar.gz` — archive of `bin/` containing `libRuntimeLibrary.so` + bundled TRT + CUDA libs
+`tensorrt/runtime-library/build/NVIDIA_TENSORRT/<arch>/Ubuntu/<ubuntu_version>/library-cuda_<N>.tar.gz` — archive of `bin/` containing `libRuntimeLibrary.so` + bundled TRT + CUDA libs
+
+Where `<arch>` is `x86_64`, `aarch64-jetson`, or `aarch64-sbsa`.
 
 ### CI Artifacts (S3)
 
-- Runtime: `s3://oaax/runtimes/<version>/NVIDIA/<arch>/<ubuntu>/library-cuda_<N>.tar.gz`
+- Runtime: `s3://oaax/runtimes/<version>/NVIDIA_TENSORRT/<arch>/Ubuntu/<ubuntu_version>/library-cuda_<N>.tar.gz`
 - Toolchain: `s3://oaax/conversion-toolchain/<version>/NVIDIA/oaax-nvidia-tensorrt-toolchain.tar`
 
 ---
