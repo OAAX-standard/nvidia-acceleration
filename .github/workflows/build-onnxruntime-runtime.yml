@@ -86,9 +86,9 @@ jobs:
               AARCH64) arch="aarch64" ;;
             esac
             s3cmd put "$archive" \
-              "s3://oaax/runtimes/${version}/NVIDIA_ONNXRUNTIME/${arch}/Ubuntu/library-cuda_${cuda}.tar.gz"
+              "s3://oaax/runtimes/${version}/NVIDIA_ORT/${arch}/Ubuntu/library-cuda_${cuda}.tar.gz"
           done
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            s3cmd sync "s3://oaax/runtimes/${version}/NVIDIA_ONNXRUNTIME/" \
-                       "s3://oaax/runtimes/latest/NVIDIA_ONNXRUNTIME/"
+            s3cmd sync "s3://oaax/runtimes/${version}/NVIDIA_ORT/" \
+                       "s3://oaax/runtimes/latest/NVIDIA_ORT/"
           fi
