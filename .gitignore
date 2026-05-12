@@ -22,3 +22,5 @@ devices.md
 *.jpg
 *.mp4
 tests/artifacts/
+tests/compiled_models/
+tests/runtime/build/
