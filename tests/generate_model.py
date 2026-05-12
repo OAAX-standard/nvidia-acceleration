@@ -22,6 +22,7 @@ def make_model():
     node = helper.make_node("Identity", inputs=["input"], outputs=["output"])
     graph = helper.make_graph([node], "identity-test", [X], [Y])
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 11)])
+    model.ir_version = 7  # keep compatible with older ORT (max IR 12)
     onnx.checker.check_model(model)
     return model
 
