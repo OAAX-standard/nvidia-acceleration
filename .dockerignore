@@ -2,8 +2,10 @@
 .git/
 build/
 artifacts/
-runtime-library/build/
-conversion-toolchain/artifacts/
+tensorrt/runtime-library/build/
+tensorrt/conversion-toolchain/artifacts/
+onnxruntime/runtime-library/build/
+onnxruntime/conversion-toolchain/artifacts/
 tensorrt-archives/
 *.log
 *.jpg

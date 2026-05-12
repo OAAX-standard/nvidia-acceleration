@@ -1,7 +1,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 VERSION_FILE="$REPO_ROOT/VERSION"
 if [ ! -f "$VERSION_FILE" ]; then
