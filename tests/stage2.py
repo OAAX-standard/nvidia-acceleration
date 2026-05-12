@@ -100,8 +100,11 @@ def find_lib_dir(lib_arg: str) -> str:
             return str(p.parent)
         if p.is_dir() and any(p.glob("libRuntimeLibrary.so*")):
             return str(p)
-    candidates = list(RUNTIME_BUILD_DIR.glob("**/libRuntimeLibrary.so"))
-    return str(candidates[0].parent) if candidates else str(RUNTIME_BUILD_DIR)
+    # Prefer x86_64 build; fall back to first found
+    candidates = sorted(RUNTIME_BUILD_DIR.glob("**/libRuntimeLibrary.so"))
+    x86 = [c for c in candidates if "x86_64" in str(c)]
+    chosen = x86[0] if x86 else candidates[0] if candidates else None
+    return str(chosen.parent) if chosen else str(RUNTIME_BUILD_DIR)
 
 
 # ── Model discovery ─────────────────────────────────────────────────────────────
@@ -241,6 +244,19 @@ def main() -> None:
         if not build_inference_test():
             print("  Build failed — aborting")
             sys.exit(1)
+
+    # Point libRuntimeLibrary.so symlink at the TRT library (overwrite ORT symlink if present)
+    trt_so = Path(lib_dir) / "libRuntimeLibrary.so"
+    if trt_so.exists():
+        dst = TEST_BUILD_DIR / "libRuntimeLibrary.so"
+        if dst.is_symlink():
+            dst.unlink()
+        dst.symlink_to(trt_so)
+    # Symlink TRT bundled deps that are not already present
+    for so in Path(lib_dir).glob("*.so*"):
+        dst = TEST_BUILD_DIR / so.name
+        if not dst.exists():
+            dst.symlink_to(so)
 
     csv_file = None
     csv_writer = None

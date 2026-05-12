@@ -18,12 +18,11 @@ from pathlib import Path
 import pytest
 
 COMPILED_DIR = Path(__file__).parent / "compiled_models"
-DOCKER_IMAGE = "oaax-nvidia-tensorrt-toolchain:latest"
+DOCKER_IMAGE = "oaax-nvidia-tensorrt-toolchain:1.2.0"
 
-# TensorRT supports FP16 and INT8 (no pure FP32 mode in this toolchain)
+# INT8 requires calibration images — only FP16 is tested here
 _CONFIGS: dict[str, dict] = {
     "FP16": {"precision": "fp16", "workspace_gb": 2},
-    "INT8": {"precision": "int8", "workspace_gb": 2},
 }
 
 YOLO_MODELS = ["yolov8n", "yolo11n", "yolo11s"]
@@ -60,7 +59,7 @@ def _convert_with_docker(
         docker_out.mkdir()
 
         with zipfile.ZipFile(bundle, "w") as z:
-            z.write(onnx_path, arcname=f"{model_name}.onnx")
+            z.write(onnx_path, arcname="model.onnx")
             z.writestr("config.json", json.dumps(config))
 
         result = subprocess.run(

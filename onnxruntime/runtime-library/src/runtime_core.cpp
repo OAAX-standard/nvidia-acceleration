@@ -87,7 +87,7 @@ extern "C" int runtime_initialization()
         // Init logger
         logger = initialize_logger(log_file, log_level, log_level, runtime_name());
         logger->info("Initializing the runtime");
-        env = std::make_unique<Ort::Env>(ORT_LOGGING_LEVEL_ERROR, runtime_name());
+        env = std::make_unique<Ort::Env>(ORT_LOGGING_LEVEL_WARNING, runtime_name());
         logger->trace("ORT logging initialized");
         session_options = std::make_unique<Ort::SessionOptions>();
         session_options->SetIntraOpNumThreads(num_threads);
@@ -252,9 +252,9 @@ extern "C" int receive_output(tensors_struct **output_tensors)
     // Check if there are any output tensors in the queue
     if (output_tensors_queue.size_approx() == 0)
     {
-        // Sleep for 100ms
-        logger->debug("No output tensors available, sleeping for 100ms...");
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // Sleep for 1ms
+        logger->debug("No output tensors available, sleeping for 1ms...");
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
         logger->trace("Woke up from sleep.");
         return -1;
     }

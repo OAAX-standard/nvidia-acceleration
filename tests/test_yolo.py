@@ -28,26 +28,6 @@ class TestYoloConversion640:
             f"model.trt suspiciously small ({trt.stat().st_size} bytes)"
 
     @pytest.mark.parametrize("model", ["yolov8n", "yolo11n", "yolo11s"])
-    def test_int8_trt_exists(self, compiled_yolo_models, model):
-        key = (model, "INT8")
-        assert key in compiled_yolo_models, f"Model {model} INT8 not converted"
-        trt = compiled_yolo_models[key]
-        assert trt.exists(), f"model.trt not found: {trt}"
-        assert trt.stat().st_size > 1024 * 1024, \
-            f"model.trt suspiciously small ({trt.stat().st_size} bytes)"
-
-    @pytest.mark.parametrize("model", ["yolov8n", "yolo11n", "yolo11s"])
-    def test_int8_smaller_than_fp16(self, compiled_yolo_models, model):
-        """INT8 engine should compress well compared to FP16."""
-        fp16_trt = compiled_yolo_models.get((model, "FP16"))
-        int8_trt = compiled_yolo_models.get((model, "INT8"))
-        if fp16_trt is None or int8_trt is None:
-            pytest.skip("Both precisions required for size comparison")
-        ratio = int8_trt.stat().st_size / fp16_trt.stat().st_size
-        assert ratio < 1.5, \
-            f"INT8 engine unexpectedly larger than FP16 (ratio={ratio:.2f})"
-
-    @pytest.mark.parametrize("model", ["yolov8n", "yolo11n", "yolo11s"])
     def test_logs_produced(self, compiled_yolo_models, model):
         trt = compiled_yolo_models.get((model, "FP16"))
         if trt is None:

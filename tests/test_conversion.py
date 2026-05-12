@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
-DOCKER_IMAGE = "oaax-nvidia-tensorrt-toolchain:latest"
+DOCKER_IMAGE = "oaax-nvidia-tensorrt-toolchain:1.2.0"
 
 
 def _docker_image_available() -> bool:

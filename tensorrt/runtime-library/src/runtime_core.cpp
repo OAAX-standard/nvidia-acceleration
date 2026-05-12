@@ -329,7 +329,7 @@ extern "C" int receive_output(tensors_struct **output_tensors)
     logger->debug("Checking for output. Queue size: ~{}", output_tensors_queue.size_approx());
     if (output_tensors_queue.size_approx() == 0)
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
         return -1;
     }
     if (!output_tensors_queue.try_dequeue(*output_tensors))
