@@ -1,6 +1,6 @@
 name: Build OAAX runtime
 permissions:
-  contents: none
+  contents: read
 
 on:
   push:
@@ -11,39 +11,46 @@ on:
       - main
 
 jobs:
-  build-runtimes-for-ubuntu:
-    timeout-minutes: 60  # Set a timeout of 60 minutes for the job
+  build-runtimes:
+    timeout-minutes: 120
     runs-on: hetzner-runner
     container:
-      image: ubuntu:22.04  # or any other image
-      options: --volume /var/run/docker.sock:/var/run/docker.sock
+      image: ubuntu:22.04
+      options: >-
+        --volume /var/run/docker.sock:/var/run/docker.sock
+        --volume ${{ vars.NVIDIA_DEPS_DIR }}:${{ vars.NVIDIA_DEPS_DIR }}
 
     steps:
-      - name: Set up Docker Image
+      - name: Set up Docker image
         run: |
           export DEBIAN_FRONTEND=noninteractive
           apt-get update
-          apt-get install -y git git-lfs
+          apt-get install -y git git-lfs wget curl build-essential python3 xz-utils s3cmd tree sudo
           git lfs install
 
       - name: Checkout
         uses: actions/checkout@v3
         with:
           fetch-depth: 1
-          submodules: 'recursive'
-          lfs: true
 
-      - name: Set up environment
+      - name: Link pre-cached deps
+        run: ln -fs ${{ vars.NVIDIA_DEPS_DIR }} .deps
+
+      - name: Install env deps
         run: bash scripts/setup-env.sh
 
-      - name: Cross-compile runtimes
-        run: bash runtime-library/build-runtimes.sh
-
-      - name: Install s3cmd
+      - name: Determine version
         run: |
-          export DEBIAN_FRONTEND=noninteractive
-          apt-get update
-          apt-get install -y s3cmd
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            version=$(cat VERSION)
+          else
+            version=${{ github.head_ref }}
+          fi
+          echo "version=$version" >> $GITHUB_ENV
+
+      - name: Build all runtimes
+        run: |
+          bash tensorrt/runtime-library/build-runtimes.sh
 
       - name: Configure s3cmd
         run: |
@@ -57,83 +64,15 @@ jobs:
           use_https = True
           EOF
 
-      - name: Determine version
-        run: |
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            if [ -f VERSION ]; then
-              version=$(cat VERSION)
-            else
-              exit 1
-            fi
-          else
-            version=${{ github.head_ref }}
-          fi
-          echo "version=$version" >> $GITHUB_ENV
-
       - name: Upload runtimes to S3
         run: |
-            s3cmd put "runtime-library/artifacts/runtime-library-AARCH64-cuda_11.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/aarch64/Ubuntu/library-cuda_11.tar.gz"
-            s3cmd put "runtime-library/artifacts/runtime-library-AARCH64-cuda_12.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/aarch64/Ubuntu/library-cuda_12.tar.gz"
-            s3cmd put "runtime-library/artifacts/runtime-library-AARCH64-cuda_13.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/aarch64/Ubuntu/library-cuda_13.tar.gz"
-            s3cmd put "runtime-library/artifacts/runtime-library-X86_64-cuda_11.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/x86_64/Ubuntu/library-cuda_11.tar.gz"
-            s3cmd put "runtime-library/artifacts/runtime-library-X86_64-cuda_12.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/x86_64/Ubuntu/library-cuda_12.tar.gz"
-            s3cmd put "runtime-library/artifacts/runtime-library-X86_64-cuda_13.tar.gz" "s3://oaax/runtimes/${{ env.version }}/NVIDIA/x86_64/Ubuntu/library-cuda_13.tar.gz"
-            if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-              s3cmd sync "s3://oaax/runtimes/${{ env.version }}/NVIDIA/*" "s3://oaax/runtimes/latest/NVIDIA/" 
-            fi
-
-  build-runtime-for-windows-x86_64:
-    timeout-minutes: 60  # Set a timeout of 60 minutes for the job
-    runs-on: windows-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 1
-          submodules: 'recursive'
-          lfs: true
-      - name: Compile runtime
-        run: |
-          cd runtime-library
-          .\build-runtimes.bat
-      - name: Determine version
-        id: version
-        shell: pwsh
-        run: |
-            if ("${{ github.ref }}" -eq "refs/heads/main") {
-            if (Test-Path VERSION) {
-              $version = Get-Content VERSION
-            } else {
-              throw "VERSION file missing"
-            }
-            } else {
-            $version = "${{ github.head_ref }}"
-            }
-            echo "version=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: Upload runtimes to Custom S3-Compatible Bucket
-        shell: pwsh
-        run: |
-          $version = $env:version
-          $localFolder = "runtime-library\artifacts"
-          $remoteFolder = ""
-
-          $s5cmdUrl = "https://github.com/peak/s5cmd/releases/download/v2.3.0/s5cmd_2.3.0_Windows-64bit.zip"
-          $s5cmdZip = "$env:USERPROFILE\s5cmd.zip"
-          $s5cmdPath = "$env:USERPROFILE\s5cmd"
-          Invoke-WebRequest -Uri $s5cmdUrl -OutFile $s5cmdZip
-          Expand-Archive -Path $s5cmdZip -DestinationPath $s5cmdPath -Force
-          Remove-Item -Path $s5cmdZip
-
-          $env:PATH += ";$s5cmdPath"
-          [Environment]::SetEnvironmentVariable("PATH", $env:PATH, [EnvironmentVariableTarget]::User)
-
-          $env:AWS_ACCESS_KEY_ID = "${{ secrets.S3_ACCESS_KEY }}"
-          $env:AWS_SECRET_ACCESS_KEY = "${{ secrets.S3_SECRET_KEY }}"
-
-          s5cmd --endpoint-url "https://${{ secrets.S3_ENDPOINT_URL }}" cp "$localFolder\runtime-library-X86_64-Windows-cuda_11.tar.gz" "s3://oaax/runtimes/$version/NVIDIA/x86_64/Windows/library-cuda_11.tar.gz"
-          s5cmd --endpoint-url "https://${{ secrets.S3_ENDPOINT_URL }}" cp "$localFolder\runtime-library-X86_64-Windows-cuda_12.tar.gz" "s3://oaax/runtimes/$version/NVIDIA/x86_64/Windows/library-cuda_12.tar.gz"
-          s5cmd --endpoint-url "https://${{ secrets.S3_ENDPOINT_URL }}" cp "$localFolder\runtime-library-X86_64-Windows-cuda_13.tar.gz" "s3://oaax/runtimes/$version/NVIDIA/x86_64/Windows/library-cuda_13.tar.gz"
-          if ("${{ github.ref }}" -eq "refs/heads/main") {
-            s5cmd --endpoint-url "https://${{ secrets.S3_ENDPOINT_URL }}" sync "s3://oaax/runtimes/$version/NVIDIA/*" "s3://oaax/runtimes/latest/NVIDIA/"
-          }
+          version=${{ env.version }}
+          find tensorrt/runtime-library/build/NVIDIA_TENSORRT -name "library-cuda_*.tar.gz" | while read -r archive; do
+            # archive path: tensorrt/runtime-library/build/NVIDIA_TENSORRT/<arch>/Ubuntu/<ubuntu_version>/library-cuda_<N>.tar.gz
+            rel="${archive#tensorrt/runtime-library/build/NVIDIA_TENSORRT/}"
+            s3cmd put "$archive" "s3://oaax/runtimes/${version}/NVIDIA_TRT/${rel}"
+          done
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            s3cmd sync "s3://oaax/runtimes/${version}/NVIDIA_TRT/" \
+                       "s3://oaax/runtimes/latest/NVIDIA_TRT/"
+          fi

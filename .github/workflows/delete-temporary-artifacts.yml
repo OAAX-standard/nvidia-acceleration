@@ -34,5 +34,6 @@ jobs:
         run: |
             version=${{ github.head_ref }}
             echo "Deleting artifacts for version: ${version}"
-            s3cmd del --recursive "s3://oaax/runtimes/${version}/NVIDIA/" || echo "Warning: No runtime-library found for version ${version}"
+            s3cmd del --recursive "s3://oaax/runtimes/${version}/NVIDIA_TRT/" || echo "Warning: No TRT runtime found for version ${version}"
+            s3cmd del --recursive "s3://oaax/runtimes/${version}/NVIDIA_ORT/" || echo "Warning: No ORT runtime found for version ${version}"
             s3cmd del --recursive "s3://oaax/conversion-toolchain/${version}/NVIDIA/" || echo "Warning: No conversion-toolchain found for version ${version}"

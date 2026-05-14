@@ -13,3 +13,14 @@ CMakeUserPresets.json
 build
 .DS_Store
 artifacts
+.deps/
+tensorrt-archives/
+devices.md
+
+# Test/runtime artifacts at repo root
+*.log
+*.jpg
+*.mp4
+tests/artifacts/
+tests/compiled_models/
+tests/runtime/build/

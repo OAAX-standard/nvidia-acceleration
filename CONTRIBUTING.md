@@ -1,35 +1,50 @@
-# Contributing to OAAX Nvidia implementation
+# Contributing to OAAX NVIDIA Implementation
 
-Thank you for your interest in contributing to OAAX's Nvidia implementation! We welcome contributions from the community to improve the current implementation of the OAAX runtime and conversion toolchain.
+Thank you for your interest in contributing! We welcome improvements to the runtime library, conversion toolchains, tests, and documentation.
 
-Before you start contributing, please take a moment to read through [OAAX general CONTRIBUTING document](https://github.com/OAAX-standard/OAAX/blob/main/CONTRIBUTING.md). It sets out the guidelines for contributing to OAAX projects, including code style, commit message format, and other important information.
-
-## Table of contents
-- [How to contribute](#how-to-contribute)
-- [Development environment](#development-environment)
+Before you start, please read the [OAAX general CONTRIBUTING guide](https://github.com/OAAX-standard/OAAX/blob/main/CONTRIBUTING.md) for commit message format, code style, and other project-wide guidelines.
 
 ## How to contribute
 
-The OAAX Nvidia implementation is built to be able to make use of Nvidia's GPU for model inference. If you'd like to suggest improvements to the documentation or implementation, report a bug, or contribute a new feature, please follow these steps:
-1. **Open an issue** in the repository to discuss your idea or improvement.
-2. **Fork the repository** and create a new branch for your changes.
-3. **Make your changes** and commit them with a clear message.
-4. **Push your changes** to your forked repository.
-5. **Submit a pull request** to the main repository for review.
+1. **Open an issue** to discuss your idea or bug report.
+2. **Fork the repository** and create a branch for your changes.
+3. **Make your changes**, add or update tests where relevant.
+4. **Push** to your fork and **submit a pull request**.
 
+---
 
 ## Development environment
 
-The OAAX Nvidia implementation has been tested for building on x86_64 and aarch64 architecture machines running Ubuntu 20.04 or later.
+Tested on Ubuntu 20.04+ (x86_64 and aarch64). Docker is required for the conversion toolchains; the TRT backend additionally requires an NVIDIA GPU.
 
-### Runtime
+### Python dependencies
 
-The runtime library is built using CMake and several other dependencies. You can easily install them on a host machine by running this command (assuming you have cloned the repository):
+```bash
+uv sync --group dev
+```
+
+This installs `pytest`, `ultralytics`, `onnx`, and `torchvision` into a local `.venv`.
+
+### Runtime library
+
+Build dependencies (TensorRT, CUDA toolchains) are set up via:
 
 ```bash
 sudo bash scripts/setup-env.sh
 ```
 
-### Conversion toolchain
+See `tensorrt/runtime-library/README.md` and `onnxruntime/runtime-library/` for backend-specific build instructions.
 
-The conversion toolchain is built using Docker and requires Docker to be installed on your machine. You can find instructions for installing Docker [here](https://docs.docker.com/get-docker/).
+### Running tests
+
+See [`tests/README.md`](tests/README.md) for the full test pipeline (stage1 model conversion + stage2 benchmarking).
+
+Quick start:
+
+```bash
+# Convert models (requires Docker + toolchain image)
+uv run python -m tests.stage1 --backend ort
+
+# Benchmark compiled models
+uv run python -m tests.stage2 --backend ort --runtime-lib <path-to-libRuntimeLibrary.so>
+```

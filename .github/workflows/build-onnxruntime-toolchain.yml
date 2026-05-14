@@ -1,0 +1,85 @@
+name: Build OAAX ONNX Runtime conversion toolchain
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  determine-version:
+    runs-on: hetzner-runner
+    container:
+      image: ubuntu:22.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            if [ -f VERSION ]; then
+              version=$(cat VERSION)
+            else
+              exit 1
+            fi
+          else
+            version=${{ github.head_ref }}
+          fi
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+  build-toolchain:
+    needs: determine-version
+    timeout-minutes: 20
+    runs-on: hetzner-runner
+    container:
+      image: ubuntu:22.04
+      options: --volume /var/run/docker.sock:/var/run/docker.sock
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -y
+          apt-get install -y s3cmd docker.io
+
+      - name: Build conversion toolchain image
+        run: bash onnxruntime/conversion-toolchain/build-toolchain.sh
+
+      - name: Configure s3cmd
+        run: |
+          cat > ~/.s3cfg <<EOF
+          [default]
+          access_key = ${{ secrets.S3_ACCESS_KEY }}
+          secret_key = ${{ secrets.S3_SECRET_KEY }}
+          bucket_location = us-east-1
+          host_base = ${{ secrets.S3_ENDPOINT_URL }}
+          host_bucket = %(bucket)s.${{ secrets.S3_ENDPOINT_URL }}
+          use_https = True
+          EOF
+
+      - name: Upload toolchain image to S3
+        run: |
+          version=${{ needs.determine-version.outputs.version }}
+          s3cmd put "onnxruntime/conversion-toolchain/artifacts/oaax-nvidia-toolchain.tar" \
+            "s3://oaax/conversion-toolchain/${version}/NVIDIA/oaax-nvidia-onnxruntime-toolchain.tar"
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            s3cmd cp \
+              "s3://oaax/conversion-toolchain/${version}/NVIDIA/oaax-nvidia-onnxruntime-toolchain.tar" \
+              "s3://oaax/conversion-toolchain/latest/NVIDIA/oaax-nvidia-onnxruntime-toolchain.tar"
+          fi
