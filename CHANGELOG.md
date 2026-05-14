@@ -4,6 +4,23 @@ All notable changes to this project are documented here. Versions are listed new
 
 ---
 
+## 1.4.0 — 2026-05-14
+
+### Added
+- ONNX Runtime (ORT) backend alongside native TensorRT: conversion toolchain and runtime library for Linux and Windows x86_64
+- Windows x86_64 CI build job for the ORT runtime
+- MobileNetV2 model added to the test suite
+- `uv` adopted for Python package management across the repo
+
+### Changed
+- Unified TRT and ORT test suites into a single parameterised suite (`tests/stage1.py`, `tests/stage2.py`, `tests/conftest.py`)
+- S3 artifact path prefixes renamed to `NVIDIA_TRT` and `NVIDIA_ORT`
+
+### Removed
+- Bundled CUDA libraries from ORT runtime build deps (sourced from the system at build time)
+
+---
+
 ## 2.0.0 — 2026-03-26
 
 ### Changed
