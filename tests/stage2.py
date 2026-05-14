@@ -4,7 +4,7 @@
 Requires tests/compiled_models/<backend>/ to be populated by stage1 first.
 
 Usage:
-    python tests/stage2.py [options]
+    python -m tests.stage2 [options]
 
 Options:
     --backend        trt|ort     which backend to benchmark (default: trt)

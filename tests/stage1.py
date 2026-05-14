@@ -10,10 +10,10 @@ Requirements:
   - ultralytics (uv sync --group dev)  ← for YOLO models
 
 Usage:
-    python tests/stage1.py                       # both backends
-    python tests/stage1.py --backend trt         # TRT only
-    python tests/stage1.py --backend ort         # ORT only
-    python tests/stage1.py --smoke-only          # identity model only, both backends
+    python -m tests.stage1                       # both backends
+    python -m tests.stage1 --backend trt         # TRT only
+    python -m tests.stage1 --backend ort         # ORT only
+    python -m tests.stage1 --smoke-only          # identity model only, both backends
 """
 
 import argparse
