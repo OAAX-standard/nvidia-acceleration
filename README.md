@@ -1,22 +1,30 @@
 # nvidia-acceleration
 
-NVIDIA GPU implementation of the [OAAX standard](https://github.com/OAAX-standard/OAAX) (Open AI Accelerator eXchange), using native TensorRT for best-in-class inference performance.
+NVIDIA GPU implementation of the [OAAX standard](https://github.com/OAAX-standard/OAAX) (Open AI Accelerator eXchange), with two inference backends:
 
-## How it works
-
-An ONNX model is compiled into a TensorRT engine at conversion time, targeting the specific GPU architecture where inference will run. The runtime library then loads and executes that engine directly — no ONNX Runtime, no JIT compilation at inference time.
-
-```
-[model.onnx]  →  conversion toolchain  →  [model.trt]  →  runtime library  →  inference
-                  (GPU required)                            (TRT + CUDA only)
-```
-
-## Components
-
-| Component | Location | Details |
+| Backend | How it works | Best for |
 |---|---|---|
-| Conversion toolchain | [`conversion-toolchain/`](conversion-toolchain/README.md) | Compiles an ONNX model into a `.trt` engine |
-| Runtime library | [`runtime-library/`](runtime-library/README.md) | Loads and runs the `.trt` engine; implements the OAAX C API |
+| **TensorRT** | Compiles ONNX → `.trt` engine at conversion time; runs with native TRT | Maximum inference performance |
+| **ONNX Runtime** | Simplifies ONNX graph; runs with ORT + CUDA Execution Provider | Broader model compatibility, no GPU at conversion time |
+
+---
+
+## Repository structure
+
+```
+nvidia-acceleration/
+├── tensorrt/
+│   ├── conversion-toolchain/   # Compiles ONNX → .trt engine (GPU required)
+│   └── runtime-library/        # Loads and runs .trt engines via OAAX C API
+├── onnxruntime/
+│   ├── conversion-toolchain/   # Simplifies ONNX for ORT+CUDA (no GPU needed)
+│   └── runtime-library/        # Runs simplified ONNX via ORT+CUDA EP
+├── scripts/
+│   └── setup-env.sh            # Dev machine setup: toolchains, TRT/CUDA archives
+└── tests/                      # Stage1 (conversion) + Stage2 (benchmark) test suite
+```
+
+---
 
 ## Supported platforms
 
@@ -26,126 +34,42 @@ An ONNX model is compiled into a TensorRT engine at conversion time, targeting t
 | `AARCH64_JETSON` | Linux aarch64 | Jetson (JetPack 7.0+) |
 | `AARCH64_SBSA` | Linux aarch64 | DGX Spark, Grace-Hopper, Grace-based servers |
 
-## Development machine
-
-Two activities happen on the development machine: building the toolchain image and cross-compiling the runtime library. No GPU is required.
-
-| Activity | Requirements |
-|---|---|
-| Build toolchain Docker image | Linux, Docker |
-| Cross-compile runtime library | Linux x86_64, CMake ≥ 3.14, cross-compilation toolchains, TensorRT and CUDA from [developer.nvidia.com](https://developer.nvidia.com) |
-
-See each component's README for full setup instructions.
-
-## Deployment machine
-
-Model conversion and inference both run on the deployment machine. TensorRT profiles and compiles kernels against the actual GPU at conversion time, so the engine is always optimal for the hardware it runs on.
-
-| Activity | Requirements |
-|---|---|
-| Convert ONNX → `.trt` | NVIDIA GPU + driver ≥ 525; Docker + nvidia-container-toolkit **or** Python wheel (see [conversion-toolchain/README](conversion-toolchain/README.md)) |
-| Run inference | NVIDIA GPU + driver ≥ 525 |
-
-The runtime library is self-contained — the `bin/` directory bundles all required shared libraries. No separate TensorRT or CUDA installation is needed for inference.
-
-| Requirement | Notes |
-|---|---|
-| Linux (x86_64 or aarch64) | Must match the build `PLATFORM` |
-| NVIDIA GPU | Any SM ≥ 7.5 supported by TensorRT 10 |
-| NVIDIA driver ≥ 525 | Required by TensorRT 10 |
-| glibc ≥ 2.17 | Satisfied by any modern Linux distribution |
-
-## Utilities
-
-| Tool | Location | Description |
-|---|---|---|
-| System scanner | [`system-scanner/`](system-scanner/) | Scans a machine, checks runtime support, and identifies the correct tarball to deploy |
+Windows x86_64 is supported by the ORT backend only.
 
 ---
 
-## User flow
+## TensorRT backend
 
-Complete end-to-end walkthrough from ONNX model to running inference on a deployment machine.
+### How it works
 
-### Step 1 — Build the artifacts (development machine, one-time)
-
-**Runtime library** — cross-compile for the target platform:
-```bash
-bash runtime-library/build-runtimes.sh
-# Output: runtime-library/build/NVIDIA/<arch>/<march>/Ubuntu/<glibc>/library-cuda_<N>.tar.gz
+```
+[model.onnx]  →  conversion toolchain  →  [model.trt]  →  runtime library  →  inference
+                  (GPU required)                            (TRT + CUDA only)
 ```
 
-**Conversion toolchain** — build the Docker image (recommended) or the Python wheel:
-```bash
-# Docker image (recommended):
-bash conversion-toolchain/build-toolchain.sh
-# Output: conversion-toolchain/artifacts/oaax-nvidia-tensorrt-toolchain.tar
+The conversion toolchain runs `trtexec` on the deployment machine, compiling and profiling kernels against the GPU that is physically present. The `.trt` engine is then loaded directly by the runtime library — no JIT compilation at inference time.
 
-# Python wheel (Docker-free fallback):
-bash conversion-toolchain/build-wheel.sh
-# Output: conversion-toolchain/artifacts/oaax_nvidia_tensorrt_conversion-<version>-py3-none-any.whl
-```
-
----
-
-### Step 2 — Check the deployment machine
-
-Build and run the system scanner **on the deployment machine** to confirm it is supported and identify which runtime tarball to use:
+### Development machine (build once)
 
 ```bash
-# Build (on the deployment machine):
-cd system-scanner && mkdir -p build && cd build && cmake .. && make -j
+# Cross-compile the runtime library for the target platform
+bash tensorrt/runtime-library/build-runtimes.sh
 
-# Run:
-./system_scanner --output report.json
-cat report.json
+# Build the Docker conversion toolchain image
+bash tensorrt/conversion-toolchain/build-toolchain.sh
 ```
 
-Example output:
-```json
-{
-  "supported": true,
-  "architecture": "x86_64",
-  "platform": "x86_64",
-  "cpu_march": "x86-64-v3",
-  "glibc_version": "2.35",
-  "cuda_version_major": 13,
-  "gpu_compute_capability": "8.6",
-  "gpu_sm": 86,
-  "recommended_runtime": "x86_64/x86-64-v3/Ubuntu/glibc2.35/library-cuda_13.tar.gz"
-}
-```
+No GPU required on the development machine.
 
-If `"supported": false`, the `unsupported_reason` field explains what is missing.
+### Deployment machine (per model)
 
----
-
-### Step 3 — Deploy the runtime library
-
-Copy and extract the tarball identified by the scanner:
-
+**1. Convert the model** (GPU required):
 ```bash
-scp runtime-library/build/NVIDIA/<recommended_runtime> user@deployment-machine:/tmp/
-ssh user@deployment-machine "mkdir -p /opt/oaax && tar -xzf /tmp/<tarball>.tar.gz -C /opt/oaax"
-# Result: /opt/oaax/bin/libRuntimeLibrary.so  (+ bundled TRT/CUDA libs)
-```
-
----
-
-### Step 4 — Convert the model
-
-Run the conversion toolchain **on the deployment machine** (GPU required). The engine is compiled specifically for the GPU that is physically present.
-
-**Prepare the input bundle:**
-```bash
-# config.json
+# Prepare the input bundle
 echo '{"precision": "fp16", "workspace_gb": 4}' > config.json
 zip bundle.zip model.onnx config.json
-```
 
-**Convert — Docker (recommended):**
-```bash
-# Load the image first (one-time, from dev machine):
+# Load the toolchain image (first time only)
 docker load -i oaax-nvidia-tensorrt-toolchain.tar
 
 docker run --rm --gpus all \
@@ -153,46 +77,81 @@ docker run --rm --gpus all \
   -v $(pwd)/output:/output \
   oaax-nvidia-tensorrt-toolchain:<version> \
   /input/bundle.zip /output
+# Output: output/model.trt + output/logs.json
 ```
 
-**Convert — Python wheel (when Docker GPU access is unavailable):**
-```bash
-pip install oaax_nvidia_tensorrt_conversion-<version>-py3-none-any.whl
-conversion_toolchain --input-path bundle.zip --output-dir ./output
-```
-
-Output: `output/model.trt` and `output/logs.json`.
-
-> The wheel checks all NVIDIA dependencies (presence and TRT version) before starting and reports exactly what is missing.
-
----
-
-### Step 5 — Run inference
-
-Load `libRuntimeLibrary.so` via the [OAAX C API](https://github.com/OAAX-standard/OAAX) and pass it `model.trt`:
-
+**2. Run inference** — load `libRuntimeLibrary.so` and use the [OAAX C API](https://github.com/OAAX-standard/OAAX):
 ```c
-void *lib = dlopen("/opt/oaax/bin/libRuntimeLibrary.so", RTLD_LAZY);
-// resolve: runtime_initialization, runtime_load_model, send_input, receive_output, ...
-
 runtime_initialization(2, (char*[]){"log_level=2", "log_file=runtime.log"});
 runtime_load_model("/path/to/model.trt", model_config_json);
-send_input(tensors);          // non-blocking
-receive_output(&out_tensors); // polls until ready
+send_input(tensors);
+receive_output(&out_tensors);
 runtime_destruct();
 ```
 
-For a complete working example see [OAAX-standard/examples](https://github.com/OAAX-standard/examples).
+See [`tensorrt/conversion-toolchain/README.md`](tensorrt/conversion-toolchain/README.md) and [`tensorrt/runtime-library/README.md`](tensorrt/runtime-library/README.md) for full details.
 
 ---
 
-### Quick-reference checklist
+## ONNX Runtime backend
+
+### How it works
 
 ```
-[ ] Dev machine:   bash runtime-library/build-runtimes.sh
-[ ] Dev machine:   bash conversion-toolchain/build-toolchain.sh  (or build-wheel.sh)
-[ ] Target:        system_scanner --output report.json  →  check "supported": true
-[ ] Target:        extract runtime tarball to /opt/oaax/bin/
-[ ] Target:        convert model  →  model.trt
-[ ] App:           dlopen libRuntimeLibrary.so, run OAAX C API
+[model.onnx]  →  conversion toolchain  →  [model.onnx]  →  runtime library  →  inference
+                  (no GPU needed)           (simplified)      (ORT + CUDA EP)
 ```
+
+The conversion toolchain runs ONNX Simplifier to fuse and clean up the graph. The simplified model is then loaded by the runtime library using ONNX Runtime with the CUDA Execution Provider.
+
+### Development machine (build once)
+
+```bash
+# Build the runtime library
+bash onnxruntime/runtime-library/build-runtimes.sh    # Linux
+.\onnxruntime\runtime-library\build-runtimes.bat       # Windows
+
+# Build the Docker conversion toolchain image
+bash onnxruntime/conversion-toolchain/build-toolchain.sh
+```
+
+### Deployment machine (per model)
+
+**1. Convert the model** (no GPU required):
+```bash
+docker load -i oaax-nvidia-toolchain.tar
+
+docker run --rm \
+  -v $(pwd)/model.onnx:/input/model.onnx \
+  -v $(pwd)/output:/output \
+  oaax-nvidia-toolchain:<version> \
+  /input/model.onnx /output
+# Output: output/*-simplified.onnx + output/logs.json
+```
+
+**2. Run inference** — same OAAX C API, pointing at the simplified `.onnx` file.
+
+See [`onnxruntime/conversion-toolchain/README.md`](onnxruntime/conversion-toolchain/README.md) for full details.
+
+---
+
+## Utilities
+
+| Tool | Location | Description |
+|---|---|---|
+| System scanner | [`system-scanner/`](system-scanner/) | Checks runtime support and identifies the correct tarball for the target machine |
+| Test suite | [`tests/`](tests/README.md) | Stage1 (model conversion) + Stage2 (benchmark) for both backends |
+
+---
+
+## Quick reference
+
+```
+[ ] Dev:     bash tensorrt/runtime-library/build-runtimes.sh
+[ ] Dev:     bash tensorrt/conversion-toolchain/build-toolchain.sh
+[ ] Target:  zip bundle.zip model.onnx config.json
+[ ] Target:  docker run ... oaax-nvidia-tensorrt-toolchain → model.trt
+[ ] App:     dlopen libRuntimeLibrary.so, OAAX C API with model.trt
+```
+
+For a complete working example see [OAAX-standard/examples](https://github.com/OAAX-standard/examples).
