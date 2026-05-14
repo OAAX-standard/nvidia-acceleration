@@ -15,7 +15,6 @@ set(TOOLS_C_UTILITIES_INCLUDE_DIR ${DEPS_DIR}/tools/c-utilities/include)
 set(CPUINFO_DIR "${DEPS_DIR}/cpuinfo")
 set(RE2_DIR "${DEPS_DIR}/re2")
 set(ONNX_RUNTIME_DIR "${DEPS_DIR}/onnxruntime")
-set(CUDA_DIR "${DEPS_DIR}/cuda")
 set(WINDOWS_RUNTIME_DIR "${DEPS_DIR}/windows-runtime")
 
 # === Compile spdlog ===
@@ -384,12 +383,6 @@ if(MSVC)
                 ${ONNXRUNTIME_DLLS}
                 "$<TARGET_FILE_DIR:RuntimeLibrary>/"
         )
-        file(GLOB CUDA_DLLS "${CUDA_DIR}/${GENERIC_BUILD_TARGET}/cuda_${CUDA_VERSION}/*")
-        add_custom_command(TARGET RuntimeLibrary POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${CUDA_DLLS}
-                "$<TARGET_FILE_DIR:RuntimeLibrary>/"
-        )
 else()
         if(CUDA_VERSION STREQUAL "13")
                 if(PLATFORM STREQUAL "AARCH64")
@@ -637,9 +630,6 @@ else()
 
         add_custom_command(TARGET RuntimeLibrary POST_BUILD
                 COMMAND cp ${ONNX_RUNTIME_DIR}/${CUDA_BIN_FOLDER_NAME}/*.so ${CMAKE_BINARY_DIR}/bin/
-        )
-        add_custom_command(TARGET RuntimeLibrary POST_BUILD
-                COMMAND cp ${CUDA_DIR}/${GENERIC_BUILD_TARGET}/cuda_${CUDA_VERSION}/* ${CMAKE_BINARY_DIR}/bin/
         )
 endif()
 
