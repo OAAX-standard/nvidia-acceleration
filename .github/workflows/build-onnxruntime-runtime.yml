@@ -43,6 +43,7 @@ jobs:
           echo "version=$version" >> $GITHUB_ENV
 
       - name: Install cross-compilation toolchains
+        shell: bash
         run: |
           toolchains=(
             "https://oaax.nbg1.your-objectstorage.com/toolchains/x86_64-unknown-linux-gnu-gcc-9.5.0.tar.gz"

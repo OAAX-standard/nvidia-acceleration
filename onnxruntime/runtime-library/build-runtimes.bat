@@ -22,7 +22,7 @@ if exist "%ARTIFACTS_DIR%" rmdir /s /q "%ARTIFACTS_DIR%"
 REM Create a new, empty artifacts directory
 mkdir "%ARTIFACTS_DIR%"
 
-set "ROOT_DIR=%cd%\.."
+set "ROOT_DIR=%cd%\..\.."
 set "VERSION_FILE=%ROOT_DIR%\VERSION"
 if not exist "%VERSION_FILE%" (
 	echo VERSION file not found at "%VERSION_FILE%"
