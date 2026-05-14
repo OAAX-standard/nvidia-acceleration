@@ -1,20 +1,21 @@
 set -e
 
-cd "$(dirname "$0")" || exit 1
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Read version from the version file
-VERSION_FILE="../../VERSION"
+VERSION_FILE="$REPO_ROOT/VERSION"
 if [ ! -f "$VERSION_FILE" ]; then
     echo "Version file not found: $VERSION_FILE"
     exit 1
 fi
 VERSION=$(<"$VERSION_FILE")
 
-rm -rf artifacts 2&> /dev/null || true
-mkdir artifacts
+mkdir -p "$SCRIPT_DIR/artifacts"
 
-# Build the toolchain as a Docker image
-docker build -t oaax-nvidia-toolchain:$VERSION .
+# Build with repo root as context so COPY VERSION works
+docker build \
+    -f "$SCRIPT_DIR/Dockerfile" \
+    -t oaax-nvidia-toolchain:$VERSION \
+    "$REPO_ROOT"
 
-# Save the Docker image as a tarball
-docker save oaax-nvidia-toolchain:$VERSION -o ./artifacts/oaax-nvidia-toolchain.tar
+docker save oaax-nvidia-toolchain:$VERSION -o "$SCRIPT_DIR/artifacts/oaax-nvidia-toolchain.tar"

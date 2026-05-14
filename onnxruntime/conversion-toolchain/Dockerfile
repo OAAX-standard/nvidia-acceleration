@@ -9,9 +9,9 @@ RUN apt-get update -qq -y --fix-missing \
 WORKDIR /app
 
 COPY VERSION /app/VERSION
-COPY pyproject.toml uv.lock /app/
-COPY conversion_toolchain /app/conversion_toolchain
-COPY scripts/ /app/scripts
+COPY onnxruntime/conversion-toolchain/pyproject.toml onnxruntime/conversion-toolchain/uv.lock /app/
+COPY onnxruntime/conversion-toolchain/conversion_toolchain /app/conversion_toolchain
+COPY onnxruntime/conversion-toolchain/scripts/ /app/scripts
 
 RUN pip install --no-cache-dir uv && \
     uv sync --frozen --no-dev
