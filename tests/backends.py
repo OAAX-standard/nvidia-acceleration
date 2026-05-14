@@ -155,7 +155,7 @@ ORT = _OrtBackend(
     min_output_bytes=1024 * 100,
     conversion_config={},
     docker_timeout=120,
-    success_markers=["Successful", "simplified"],
+    success_markers=["Simplified ONNX model successfully"],
 )
 
 BACKENDS: dict[str, Backend] = {"trt": TRT, "ort": ORT}
