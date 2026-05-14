@@ -15,7 +15,7 @@ import pytest
 
 from tests.backends import TRT, ORT, ARTIFACTS_DIR
 
-YOLO_MODELS     = ["yolov8n", "yolo11n", "yolo11s"]
+MODELS          = ["yolov8n", "yolo11n", "yolo11s", "mobilenetv2"]
 YOLO_MODELS_320 = ["yolo11n_320", "yolo11s_320"]
 
 
@@ -60,8 +60,8 @@ def toolchain_output(backend, tmp_path_factory):
 # ── YOLO fixtures ───────────────────────────────────────────────────────────────
 
 @pytest.fixture(scope="session")
-def compiled_yolo_models(backend):
-    """Convert YOLO 640×640 models via the toolchain. Returns {model_name: Path}."""
+def compiled_models(backend):
+    """Convert all models via the toolchain. Returns {model_name: Path}."""
     _require_backend(backend)
     _require_ultralytics()
 
@@ -71,7 +71,7 @@ def compiled_yolo_models(backend):
     onnx_dir.mkdir(parents=True, exist_ok=True)
 
     result = {}
-    for model_name in YOLO_MODELS:
+    for model_name in MODELS:
         onnx = Path(download_model(model_name, str(onnx_dir)))
         dest = backend.cache_dir / model_name / backend.output_filename
         if not dest.exists():

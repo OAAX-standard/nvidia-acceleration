@@ -30,11 +30,7 @@ from pathlib import Path
 ROOT           = Path(__file__).parent.parent
 TEST_BUILD_DIR = ROOT / "tests" / "runtime" / "build"
 
-_YOLO_SHAPES: dict[str, str] = {"_320": "1,3,320,320"}
-_DEFAULT_SHAPE   = "1,3,640,640"
-_IDENTITY_SHAPE  = "1,4"
-_YOLO_INPUT      = "images"
-_IDENTITY_INPUT  = "input"
+_IDENTITY_CONFIG = ("input", "1,4")
 
 
 def header(title: str) -> None:
@@ -108,12 +104,11 @@ def get_compiled_models(backend_name: str, model_filter: set | None) -> list[tup
 
 def _input_config(model_name: str) -> tuple[str, str]:
     if model_name == "identity":
-        return _IDENTITY_INPUT, _IDENTITY_SHAPE
-    shape = _DEFAULT_SHAPE
-    for pattern, s in _YOLO_SHAPES.items():
-        if pattern in model_name:
-            shape = s
-    return _YOLO_INPUT, shape
+        return _IDENTITY_CONFIG
+    from tests.models import MODEL_INPUT_CONFIGS
+    if model_name in MODEL_INPUT_CONFIGS:
+        return MODEL_INPUT_CONFIGS[model_name]
+    raise ValueError(f"No input config for model: {model_name!r}")
 
 
 def parse_field(text: str, pattern: str) -> str:
