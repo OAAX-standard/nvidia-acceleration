@@ -185,9 +185,12 @@ def main() -> None:
         if not build_inference_test():
             sys.exit(1)
 
-    # Symlink runtime libs for $ORIGIN RPATH
+    # Symlink runtime libs for $ORIGIN RPATH; always update symlinks so switching
+    # backends picks up the correct libRuntimeLibrary.so.
     for so in Path(lib_dir).glob("*.so*"):
         dst = TEST_BUILD_DIR / so.name
+        if dst.is_symlink():
+            dst.unlink()
         if not dst.exists():
             dst.symlink_to(so)
 
