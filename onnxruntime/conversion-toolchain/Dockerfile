@@ -13,7 +13,7 @@ COPY onnxruntime/conversion-toolchain/pyproject.toml onnxruntime/conversion-tool
 COPY onnxruntime/conversion-toolchain/conversion_toolchain /app/conversion_toolchain
 COPY onnxruntime/conversion-toolchain/scripts/ /app/scripts
 
-RUN pip install --no-cache-dir uv && \
+RUN pip install --no-cache-dir cmake uv && \
     uv sync --frozen --no-dev
 
 ENV PATH="/app/.venv/bin:$PATH"
