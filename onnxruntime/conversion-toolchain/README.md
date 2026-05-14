@@ -1,30 +1,55 @@
-# OAAX Nvidia conversion toolchain
+# OAAX NVIDIA ORT Conversion Toolchain
 
-This Nvidia implementation of an OAAX conversion toolchain converts a non-optimized ONNX model to optimized ONNX model using the [ONNX Simplifier](https://github.com/daquexian/onnx-simplifier) tool.   
-The optimization step includes checking the correctness of the ONNX graph, fusing operators, removing unused nodes, and applying other optimizations. Hence, the resulting model is expected to be smaller and more efficient for deployment.
+Converts an ONNX model to a simplified ONNX model optimised for inference with ONNX Runtime + CUDA Execution Provider. The simplification step fuses operators, removes unused nodes, and validates the graph — the output model is functionally identical but leaner.
 
-## Getting started
+---
 
-The Docker image is built using the provided [Dockerfile](Dockerfile) and [entrypoint](scripts%2Fconvert.sh) script. 
-The entrypoint script takes two parameters:
-- The path to the platform-agnostic model.
-- The path to the output directory where the optimized model will be saved, along with a JSON file that contains the conversion process logs.
+## Inputs and outputs
 
-The conversion toolchain relies on the Python package `conversion_toolchain` which is installed in the Docker image during the build stage.
+| | |
+|---|---|
+| **Input** | Raw `.onnx` file mounted at `/input/<model>.onnx` |
+| **Output** | Simplified `*-simplified.onnx` + `logs.json` written to `/output/` |
 
-To build the example Docker image, run the following command (Note that you need to have Docker installed):
+No GPU is required to run this toolchain.
+
+---
+
+## Build the Docker image
+
 ```bash
 bash build-toolchain.sh
 ```
 
-This will build the Docker image, and save it in the `artifacts/` directory.
+This builds the image and saves it as a `.tar` archive in `artifacts/`.
 
-## Running the conversion toolchain
+---
 
-To run the conversion toolchain, you need to have the Docker image built and an ONNX model file to convert.
-To convert a model, run the following command:
+## Run the conversion
+
 ```bash
-docker run -v /path/to/model-directory:/model  oaax-cuda-toolchain:latest /model/model.onnx /model/output
+docker run --rm \
+  -v /path/to/model.onnx:/input/model.onnx \
+  -v /path/to/output:/output \
+  oaax-nvidia-toolchain:1.4.0 \
+  /input/model.onnx /output
 ```
-That will create a Docker container, mount the model directory to the container, and run the conversion process on the model file `model.onnx` (located in `/path/to/model-directory` on the host machine). 
-The optimized model will be saved in the `/path/to/model-directory/output/` directory (on the host).
+
+The simplified model and `logs.json` will appear in `/path/to/output/`.
+
+---
+
+## Python wheel (Docker-free fallback)
+
+### Build
+
+```bash
+bash build-wheel.sh
+```
+
+### Install and run
+
+```bash
+pip install artifacts/oaax_nvidia_ort_conversion-*.whl
+conversion_toolchain /path/to/model.onnx /path/to/output
+```

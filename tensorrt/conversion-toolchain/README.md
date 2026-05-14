@@ -49,12 +49,6 @@ docker run --rm --gpus all \
   /input/bundle.zip /output
 ```
 
-docker run --rm --gpus all \
-  -v //home/ayoub/nvidia-acceleration/tests/artifacts/bundle.zip:/input/bundle.zip \
-  -v /home/ayoub/nvidia-acceleration/tests/artifacts/output:/output \
-  oaax-nvidia-tensorrt-toolchain:1.2.0 \
-  /input/bundle.zip /output
-
 ---
 
 ## Python wheel (Docker-free fallback)
