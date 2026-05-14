@@ -8,7 +8,7 @@ Requirements:
   - NVIDIA GPU with CUDA
   - Docker with --gpus all support
   - oaax-nvidia-tensorrt-toolchain image (bash tensorrt/conversion-toolchain/build-toolchain.sh)
-  - ultralytics (pip install ultralytics)  ← for YOLO models only
+  - ultralytics (uv sync --group dev)  ← for YOLO models only
 
 Usage:
     python tests/stage1.py

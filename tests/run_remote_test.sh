@@ -64,9 +64,10 @@ run_device() {
 set -e
 cd $REMOTE_DIR
 rm -rf .venv output
-python3 -m venv .venv
-.venv/bin/pip install --quiet --upgrade pip
-.venv/bin/pip install --quiet "$WHEEL_NAME"
+curl -LsSf https://astral.sh/uv/install.sh | sh -s -- --quiet
+export PATH="$HOME/.local/bin:$PATH"
+uv venv .venv
+uv pip install --quiet "$WHEEL_NAME"
 .venv/bin/conversion_toolchain --input-path bundle.zip --output-dir output
 EOF
     then

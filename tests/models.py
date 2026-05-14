@@ -1,7 +1,7 @@
 """
 YOLO model download and ONNX export utilities for NVIDIA TRT test suite.
 
-Requires ultralytics: pip install ultralytics
+Requires ultralytics: uv sync --group dev
 """
 
 import os

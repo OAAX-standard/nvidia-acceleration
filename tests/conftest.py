@@ -112,7 +112,7 @@ def compiled_yolo_models() -> dict:
     try:
         import ultralytics  # noqa: F401
     except ImportError:
-        pytest.skip("ultralytics not installed — run: pip install ultralytics")
+        pytest.skip("ultralytics not installed — run: uv sync --group dev")
 
     onnx_dir = COMPILED_DIR / "onnx"
     onnx_dir.mkdir(parents=True, exist_ok=True)
@@ -145,7 +145,7 @@ def compiled_yolo_models_320() -> dict:
     try:
         import ultralytics  # noqa: F401
     except ImportError:
-        pytest.skip("ultralytics not installed — run: pip install ultralytics")
+        pytest.skip("ultralytics not installed — run: uv sync --group dev")
 
     onnx_dir = COMPILED_DIR / "onnx"
     onnx_dir.mkdir(parents=True, exist_ok=True)

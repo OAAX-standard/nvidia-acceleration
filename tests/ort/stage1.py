@@ -7,7 +7,7 @@ tests/ort/compiled_models/.  No GPU required.
 Requirements:
   - Docker
   - oaax-nvidia-toolchain Docker image (or set NVIDIA_ORT_TOOLCHAIN_IMAGE)
-  - onnx + ultralytics (pip install onnx ultralytics)  ← for YOLO models
+  - onnx + ultralytics (uv sync --group dev)  ← for YOLO models
 
 Usage:
     python tests/ort/stage1.py

@@ -1,0 +1,23 @@
+[project]
+name = "oaax-nvidia-ort-conversion"
+dynamic = ["version"]
+description = "OAAX conversion toolchain — simplifies an ONNX model for OnnxRuntime inference"
+requires-python = ">=3.8"
+dependencies = [
+    "onnx",
+    "onnxsim",
+]
+
+[project.scripts]
+conversion_toolchain = "conversion_toolchain.main:cli"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+version = {attr = "conversion_toolchain.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["conversion_toolchain*"]

@@ -2,7 +2,7 @@
 set -e
 cd "$(dirname "$0")"
 
-python3 -m build --wheel --outdir artifacts/ .
+uv build --wheel --out-dir artifacts/ .
 echo ""
 echo "Wheel written to artifacts/:"
 ls -lh artifacts/*.whl
