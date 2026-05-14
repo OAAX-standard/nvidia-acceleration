@@ -1,59 +1,56 @@
 """
-YOLO integration tests: ONNX → TRT engine via Docker toolchain.
-
-These tests convert YOLO models to TRT engines and verify the output.
-Results are cached in tests/compiled_models/ — subsequent runs are fast.
-
-Requires:
-  - Docker with NVIDIA runtime (`--gpus all`)
-  - oaax-nvidia-tensorrt-toolchain Docker image built locally
-  - ultralytics: pip install ultralytics
+YOLO integration tests: ONNX → output model via Docker toolchain.
+Runs for both TRT (→ model.trt) and ORT (→ model.onnx) backends.
 """
-
-from pathlib import Path
 
 import pytest
 
 
 class TestYoloConversion640:
-    """YOLO 640×640 models at FP16 precision."""
-
     @pytest.mark.parametrize("model", ["yolov8n", "yolo11n", "yolo11s"])
-    def test_fp16_trt_exists(self, compiled_yolo_models, model):
-        key = (model, "FP16")
-        assert key in compiled_yolo_models, f"Model {model} FP16 not converted"
-        trt = compiled_yolo_models[key]
-        assert trt.exists(), f"model.trt not found: {trt}"
-        assert trt.stat().st_size > 1024 * 1024, \
-            f"model.trt suspiciously small ({trt.stat().st_size} bytes)"
+    def test_output_exists(self, backend, compiled_yolo_models, model):
+        path = compiled_yolo_models.get(model)
+        assert path and path.exists(), f"{backend.output_filename} not found for {model}"
+        assert path.stat().st_size > backend.min_output_bytes, \
+            f"{backend.output_filename} suspiciously small ({path.stat().st_size} bytes)"
 
     @pytest.mark.parametrize("model", ["yolov8n", "yolo11n", "yolo11s"])
     def test_logs_produced(self, compiled_yolo_models, model):
-        trt = compiled_yolo_models.get((model, "FP16"))
-        if trt is None:
-            pytest.skip("FP16 model not converted")
-        logs = trt.parent / "logs.json"
-        assert logs.exists(), f"logs.json missing alongside model.trt"
+        path = compiled_yolo_models.get(model)
+        if path is None:
+            pytest.skip(f"{model} not converted")
+        assert (path.parent / "logs.json").exists()
+
+    @pytest.mark.parametrize("model", ["yolo11n", "yolo11s"])
+    def test_larger_than_yolov8n(self, compiled_yolo_models, model):
+        """yolo11s should not be drastically smaller than yolov8n."""
+        base = compiled_yolo_models.get("yolov8n")
+        other = compiled_yolo_models.get(model)
+        if not base or not other:
+            pytest.skip("Both models required")
+        if model == "yolo11s":
+            assert other.stat().st_size >= base.stat().st_size * 0.5, \
+                "yolo11s surprisingly small compared to yolov8n"
 
 
 class TestYoloConversion320:
-    """YOLO 320×320 models at FP16 precision."""
-
     @pytest.mark.parametrize("model", ["yolo11n_320", "yolo11s_320"])
-    def test_fp16_trt_exists(self, compiled_yolo_models_320, model):
-        key = (model, "FP16")
-        assert key in compiled_yolo_models_320
-        trt = compiled_yolo_models_320[key]
-        assert trt.exists()
-        assert trt.stat().st_size > 1024 * 1024
+    def test_output_exists(self, backend, compiled_yolo_models_320, model):
+        path = compiled_yolo_models_320.get(model)
+        assert path and path.exists()
+        assert path.stat().st_size > backend.min_output_bytes
 
-    @pytest.mark.parametrize("model", ["yolo11n_320", "yolo11s_320"])
-    def test_320_smaller_than_640(self, compiled_yolo_models, compiled_yolo_models_320, model):
-        """320×320 engine should be smaller than the 640×640 equivalent."""
-        base_name = model.replace("_320", "")
-        trt_640 = compiled_yolo_models.get((base_name, "FP16"))
-        trt_320 = compiled_yolo_models_320.get((model, "FP16"))
-        if trt_640 is None or trt_320 is None:
-            pytest.skip("Both resolutions required for size comparison")
-        assert trt_320.stat().st_size <= trt_640.stat().st_size, \
-            "320×320 engine is not smaller than 640×640 engine"
+    @pytest.mark.parametrize("base", ["yolo11n", "yolo11s"])
+    def test_320_vs_640_size(self, backend, compiled_yolo_models, compiled_yolo_models_320, base):
+        path_640 = compiled_yolo_models.get(base)
+        path_320 = compiled_yolo_models_320.get(f"{base}_320")
+        if not path_640 or not path_320:
+            pytest.skip("Both resolutions required")
+        size_640, size_320 = path_640.stat().st_size, path_320.stat().st_size
+        if backend.name == "trt":
+            # Smaller input → smaller TRT engine
+            assert size_320 <= size_640, "320×320 TRT engine should be ≤ 640×640"
+        else:
+            # Same weights exported at different input sizes → same ONNX file size
+            ratio = abs(size_320 - size_640) / size_640
+            assert ratio < 0.05, f"ORT 320 and 640 ONNX differ by {ratio:.1%} (expected <5%)"

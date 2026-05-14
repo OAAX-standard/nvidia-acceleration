@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
-"""Stage 2: Benchmark compiled TRT models using the OAAX runtime.
+"""Stage 2: Benchmark compiled models using the OAAX runtime library.
 
-Requires tests/compiled_models/ to be populated by stage1 first.
-Runs inference_test for each compiled model and reports latency / throughput.
+Requires tests/compiled_models/<backend>/ to be populated by stage1 first.
 
 Usage:
     python tests/stage2.py [options]
 
 Options:
-    --runtime-lib    PATH   path to libRuntimeLibrary.so (or directory)
-    --runs           N      benchmark iterations (default: 100)
-    --warmup         N      warmup iterations (default: 10)
-    --models         LIST   comma-separated model names to run (default: all)
-    --precisions     LIST   comma-separated precisions: FP16,INT8 (default: all)
-    --csv            PATH   write results to CSV
-    --skip-build            skip building inference_test binary
-    --log-level      N      runtime log level 0-4 (default: 3)
+    --backend        trt|ort     which backend to benchmark (default: trt)
+    --runtime-lib    PATH        path to libRuntimeLibrary.so or its directory
+    --runs           N           benchmark iterations (default: 100)
+    --warmup         N           warmup iterations (default: 10)
+    --models         LIST        comma-separated model names (default: all)
+    --csv            PATH        write results to CSV
+    --skip-build                 skip building inference_test binary
+    --log-level      N           runtime log level 0-4 (default: 3)
 """
 
 import argparse
@@ -28,19 +27,14 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT         = Path(__file__).parent.parent
-COMPILED_DIR = ROOT / "tests" / "compiled_models"
+ROOT           = Path(__file__).parent.parent
 TEST_BUILD_DIR = ROOT / "tests" / "runtime" / "build"
-RUNTIME_BUILD_DIR = ROOT / "tensorrt" / "runtime-library" / "build"
 
-# YOLO input shapes by model name pattern
-_YOLO_SHAPES: dict[str, str] = {
-    "_320": "1,3,320,320",
-}
-_DEFAULT_SHAPE = "1,3,640,640"
-
-# YOLO input tensor name
-_INPUT_NAME = "images"
+_YOLO_SHAPES: dict[str, str] = {"_320": "1,3,320,320"}
+_DEFAULT_SHAPE   = "1,3,640,640"
+_IDENTITY_SHAPE  = "1,4"
+_YOLO_INPUT      = "images"
+_IDENTITY_INPUT  = "input"
 
 
 def header(title: str) -> None:
@@ -49,19 +43,36 @@ def header(title: str) -> None:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--runtime-lib", default="",
-                   help="Path to libRuntimeLibrary.so or its directory")
-    p.add_argument("--runs",      type=int, default=100)
-    p.add_argument("--warmup",    type=int, default=10)
-    p.add_argument("--models",    default="", help="Comma-separated model names")
-    p.add_argument("--precisions",default="", help="Comma-separated precisions: FP16,INT8")
-    p.add_argument("--csv",       default="")
-    p.add_argument("--skip-build",action="store_true")
-    p.add_argument("--log-level", type=int, default=3)
+    p.add_argument("--backend",     choices=["trt", "ort"], default="trt")
+    p.add_argument("--runtime-lib", default="")
+    p.add_argument("--runs",        type=int, default=100)
+    p.add_argument("--warmup",      type=int, default=10)
+    p.add_argument("--models",      default="")
+    p.add_argument("--csv",         default="")
+    p.add_argument("--skip-build",  action="store_true")
+    p.add_argument("--log-level",   type=int, default=3)
     return p.parse_args()
 
 
-# ── Binary discovery ────────────────────────────────────────────────────────────
+def default_runtime_dir(backend_name: str) -> Path:
+    base = ROOT / f"{backend_name}runtime"[3:] if backend_name == "ort" else ROOT / "tensorrt"
+    # onnxruntime or tensorrt
+    name_map = {"trt": "tensorrt", "ort": "onnxruntime"}
+    return ROOT / name_map[backend_name] / "runtime-library"
+
+
+def find_lib_dir(lib_arg: str, backend_name: str) -> str:
+    if lib_arg:
+        p = Path(lib_arg)
+        if p.is_file() and "RuntimeLibrary" in p.name:
+            return str(p.parent)
+        if p.is_dir() and any(p.glob("libRuntimeLibrary.so*")):
+            return str(p)
+    runtime_dir = default_runtime_dir(backend_name)
+    candidates = sorted(runtime_dir.glob("**/libRuntimeLibrary.so"))
+    x86 = [c for c in candidates if "x86_64" in str(c)]
+    chosen = x86[0] if x86 else (candidates[0] if candidates else None)
+    return str(chosen.parent) if chosen else str(runtime_dir / "build" / "bin")
 
 
 def inference_test_path() -> Path:
@@ -72,69 +83,37 @@ def build_inference_test() -> bool:
     cmake = shutil.which("cmake") or "cmake"
     TEST_BUILD_DIR.mkdir(parents=True, exist_ok=True)
     try:
-        subprocess.run(
-            [cmake, "..", "-DCMAKE_BUILD_TYPE=Release"],
-            cwd=TEST_BUILD_DIR, check=True,
-        )
-        subprocess.run(
-            [cmake, "--build", ".", "--target", "inference_test", "-j", str(os.cpu_count() or 4)],
-            cwd=TEST_BUILD_DIR, check=True,
-        )
-        # Symlink shared libs for $ORIGIN RPATH
-        lib_dir = Path(find_lib_dir(""))
-        for so in lib_dir.glob("*.so*"):
-            dst = TEST_BUILD_DIR / so.name
-            if not dst.exists():
-                dst.symlink_to(so)
+        subprocess.run([cmake, "..", "-DCMAKE_BUILD_TYPE=Release"],
+                       cwd=TEST_BUILD_DIR, check=True)
+        subprocess.run([cmake, "--build", ".", "--target", "inference_test",
+                        "-j", str(os.cpu_count() or 4)],
+                       cwd=TEST_BUILD_DIR, check=True)
         return True
     except subprocess.CalledProcessError as e:
         print(f"  Build failed: {e}")
         return False
 
 
-def find_lib_dir(lib_arg: str) -> str:
-    """Return the directory containing libRuntimeLibrary.so."""
-    if lib_arg:
-        p = Path(lib_arg)
-        if p.is_file() and "RuntimeLibrary" in p.name:
-            return str(p.parent)
-        if p.is_dir() and any(p.glob("libRuntimeLibrary.so*")):
-            return str(p)
-    # Prefer x86_64 build; fall back to first found
-    candidates = sorted(RUNTIME_BUILD_DIR.glob("**/libRuntimeLibrary.so"))
-    x86 = [c for c in candidates if "x86_64" in str(c)]
-    chosen = x86[0] if x86 else candidates[0] if candidates else None
-    return str(chosen.parent) if chosen else str(RUNTIME_BUILD_DIR)
-
-
-# ── Model discovery ─────────────────────────────────────────────────────────────
-
-
-def get_compiled_models(
-    model_filter: set[str] | None = None,
-    precision_filter: set[str] | None = None,
-) -> list[tuple[Path, str, str]]:
-    allowed_precisions = precision_filter or {"FP16", "INT8"}
+def get_compiled_models(backend_name: str, model_filter: set | None) -> list[tuple[Path, str]]:
+    from tests.backends import BACKENDS
+    backend = BACKENDS[backend_name]
     results = []
-    for variant in ("FP16", "INT8"):
-        if variant not in allowed_precisions:
+    for model_path in sorted(backend.cache_dir.glob(f"*/{backend.output_filename}")):
+        model_name = model_path.parent.name
+        if model_filter and model_name not in model_filter:
             continue
-        for trt_path in sorted(COMPILED_DIR.glob(f"*/{variant}/model.trt")):
-            model_name = trt_path.parent.parent.name
-            if model_filter and model_name not in model_filter:
-                continue
-            results.append((trt_path, model_name, variant))
+        results.append((model_path, model_name))
     return results
 
 
-def _input_shape(model_name: str) -> str:
-    for pattern, shape in _YOLO_SHAPES.items():
+def _input_config(model_name: str) -> tuple[str, str]:
+    if model_name == "identity":
+        return _IDENTITY_INPUT, _IDENTITY_SHAPE
+    shape = _DEFAULT_SHAPE
+    for pattern, s in _YOLO_SHAPES.items():
         if pattern in model_name:
-            return shape
-    return _DEFAULT_SHAPE
-
-
-# ── Output parsing ──────────────────────────────────────────────────────────────
+            shape = s
+    return _YOLO_INPUT, shape
 
 
 def parse_field(text: str, pattern: str) -> str:
@@ -142,48 +121,37 @@ def parse_field(text: str, pattern: str) -> str:
     return m.group(1) if m else ""
 
 
-def run_process(cmd: list, env=None, timeout: int = 300) -> str | None:
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
-        if r.returncode != 0:
-            print(f"  [exit {r.returncode}] {Path(cmd[0]).name}")
-        return r.stdout + r.stderr
-    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
-        print(f"  [error] {e}")
-        return None
-
-
 def run_inference_test(
-    trt_path: Path,
-    model_name: str,
-    runs: int,
-    warmup: int,
-    log_level: int,
-    runtime_lib_dir: str,
+    model_path: Path, model_name: str,
+    runs: int, warmup: int, log_level: int, lib_dir: str,
 ) -> tuple | None:
     binary = inference_test_path()
     if not binary.exists():
         print(f"  [error] inference_test not found: {binary}")
         return None
 
+    input_name, input_shape = _input_config(model_name)
     env = os.environ.copy()
-    env["LD_LIBRARY_PATH"] = f"{TEST_BUILD_DIR}:{runtime_lib_dir}:{env.get('LD_LIBRARY_PATH', '')}"
+    env["LD_LIBRARY_PATH"] = f"{TEST_BUILD_DIR}:{lib_dir}:{env.get('LD_LIBRARY_PATH', '')}"
 
-    text = run_process(
-        [
-            str(binary),
-            str(trt_path),
-            "--input-name",  _INPUT_NAME,
-            "--input-shape", _input_shape(model_name),
-            "--runs",        str(runs),
-            "--warmup",      str(warmup),
-            "--log-level",   str(log_level),
-        ],
-        env=env,
-        # 600s overhead covers TRT engine deserialization before warmup
-        timeout=600 + runs * 5,
-    )
-    if not text or "=== Results ===" not in text:
+    try:
+        r = subprocess.run(
+            [str(binary), str(model_path),
+             "--input-name",  input_name,
+             "--input-shape", input_shape,
+             "--runs",        str(runs),
+             "--warmup",      str(warmup),
+             "--log-level",   str(log_level),
+             "--no-validate"],
+            capture_output=True, text=True, env=env,
+            timeout=600 + runs * 5,
+        )
+        text = r.stdout + r.stderr
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        print(f"  [error] {e}")
+        return None
+
+    if "=== Results ===" not in text:
         if text:
             print(f"  [output] {text[:400]}")
         return None
@@ -195,100 +163,76 @@ def run_inference_test(
     )
 
 
-# ── Formatting ──────────────────────────────────────────────────────────────────
-
-_HDR = "  {:<15}  {:<6}  {:>8}  {:>8}  {:>8}  {:>12}"
-_ROW = "  {:<15}  {:<6}  {:>7}ms  {:>7}ms  {:>7}ms  {:>10} FPS"
-
-
-def print_table_header() -> None:
-    print(_HDR.format("Model", "Prec", "avg_ms", "min_ms", "p95_ms", "Throughput"))
-    print(_HDR.format("-" * 15, "-" * 6, "-" * 8, "-" * 8, "-" * 8, "-" * 12))
-
-
-def write_csv_row(writer, model: str, variant: str, r: tuple) -> None:
-    if writer:
-        writer.writerow({
-            "timestamp":      datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "model":          model,
-            "variant":        variant,
-            "avg_ms":         r[0],
-            "min_ms":         r[1],
-            "p95_ms":         r[2],
-            "throughput_fps": r[3],
-        })
-
-
-# ── Main ────────────────────────────────────────────────────────────────────────
+_HDR = "  {:<15}  {:>8}  {:>8}  {:>8}  {:>12}"
+_ROW = "  {:<15}  {:>7}ms  {:>7}ms  {:>7}ms  {:>10} FPS"
 
 
 def main() -> None:
     args = parse_args()
     model_filter = {m.strip() for m in args.models.split(",") if m.strip()} or None
-    precision_filter = {p.strip() for p in args.precisions.split(",") if p.strip()} or None
 
-    if not COMPILED_DIR.exists() or not any(COMPILED_DIR.rglob("*.trt")):
-        print("ERROR: tests/compiled_models/ not found or empty — run stage1 first")
+    from tests.backends import BACKENDS
+    backend = BACKENDS[args.backend]
+
+    if not backend.cache_dir.exists() or not any(backend.cache_dir.rglob(backend.output_filename)):
+        print(f"ERROR: {backend.cache_dir} empty — run stage1 --backend {args.backend} first")
         sys.exit(1)
 
-    models = get_compiled_models(model_filter, precision_filter)
+    models = get_compiled_models(args.backend, model_filter)
     if not models:
-        print("No compiled models found matching the specified filters.")
+        print("No compiled models found.")
         sys.exit(1)
 
-    lib_dir = find_lib_dir(args.runtime_lib)
+    lib_dir = find_lib_dir(args.runtime_lib, args.backend)
 
-    # Build inference_test binary if needed
     if not args.skip_build and not inference_test_path().exists():
-        print("  inference_test not found, building...")
+        print("  Building inference_test...")
         if not build_inference_test():
-            print("  Build failed — aborting")
             sys.exit(1)
 
-    # Point libRuntimeLibrary.so symlink at the TRT library (overwrite ORT symlink if present)
-    trt_so = Path(lib_dir) / "libRuntimeLibrary.so"
-    if trt_so.exists():
-        dst = TEST_BUILD_DIR / "libRuntimeLibrary.so"
-        if dst.is_symlink():
-            dst.unlink()
-        dst.symlink_to(trt_so)
-    # Symlink TRT bundled deps that are not already present
+    # Symlink runtime libs for $ORIGIN RPATH
     for so in Path(lib_dir).glob("*.so*"):
         dst = TEST_BUILD_DIR / so.name
         if not dst.exists():
             dst.symlink_to(so)
 
-    csv_file = None
-    csv_writer = None
+    csv_file = csv_writer = None
     if args.csv:
         csv_file = open(args.csv, "w", newline="")
         csv_writer = csv.DictWriter(
             csv_file,
-            fieldnames=["timestamp", "model", "variant", "avg_ms", "min_ms", "p95_ms", "throughput_fps"],
+            fieldnames=["timestamp", "model", "avg_ms", "min_ms", "p95_ms", "throughput_fps"],
         )
         csv_writer.writeheader()
 
     try:
-        header("NVIDIA TRT Runtime Benchmark")
-        print_table_header()
+        header(f"NVIDIA {args.backend.upper()} Runtime Benchmark")
+        print(_HDR.format("Model", "avg_ms", "min_ms", "p95_ms", "Throughput"))
+        print(_HDR.format("-" * 15, "-" * 8, "-" * 8, "-" * 8, "-" * 12))
 
         pass_count = fail_count = 0
-        for trt_path, model, variant in models:
-            r = run_inference_test(trt_path, model, args.runs, args.warmup, args.log_level, lib_dir)
+        for model_path, model_name in models:
+            r = run_inference_test(model_path, model_name, args.runs, args.warmup,
+                                   args.log_level, lib_dir)
             if r:
-                print(_ROW.format(model, variant, *r))
-                write_csv_row(csv_writer, model, variant, r)
+                print(_ROW.format(model_name, *r))
+                if csv_writer:
+                    csv_writer.writerow({
+                        "timestamp":      datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        "model":          model_name,
+                        "avg_ms":         r[0], "min_ms": r[1],
+                        "p95_ms":         r[2], "throughput_fps": r[3],
+                    })
                 pass_count += 1
             else:
-                print(f"  {model:<15}  {variant:<6}  FAILED")
+                print(f"  {model_name:<15}  FAILED")
                 fail_count += 1
 
         header("Stage 2 results")
         if args.csv:
             print(f"  CSV saved to: {args.csv}")
         print(f"  Passed: {pass_count}  Failed: {fail_count}")
-
-        if fail_count > 0:
+        if fail_count:
             sys.exit(1)
 
     finally:

@@ -1,166 +1,101 @@
 """
-Shared session fixtures for the NVIDIA OAAX TensorRT test suite.
+Shared fixtures for the NVIDIA OAAX test suite.
 
-compiled_yolo_models converts YOLO models once per session via the
-Docker TRT toolchain image, caching results to tests/compiled_models/.
-Stage 1 populates this cache; Stage 2 reads from it without re-converting.
+The `backend` fixture is parameterized over [TRT, ORT] so every test runs for
+both backends. Fixtures that depend on `backend` inherit the parameterization.
 
-NOTE: The TRT toolchain requires a real NVIDIA GPU at conversion time.
-      Docker must be run with --gpus all.
+Skip conditions:
+  TRT — requires Docker with --gpus all + oaax-nvidia-tensorrt-toolchain image
+  ORT — requires Docker + oaax-nvidia-toolchain image (no GPU needed)
 """
 
-import json
-import subprocess
-import tempfile
-import zipfile
 from pathlib import Path
 
 import pytest
 
-COMPILED_DIR = Path(__file__).parent / "compiled_models"
-DOCKER_IMAGE = "oaax-nvidia-tensorrt-toolchain:1.2.0"
+from tests.backends import TRT, ORT, ARTIFACTS_DIR
 
-# INT8 requires calibration images — only FP16 is tested here
-_CONFIGS: dict[str, dict] = {
-    "FP16": {"precision": "fp16", "workspace_gb": 2},
-}
-
-YOLO_MODELS = ["yolov8n", "yolo11n", "yolo11s"]
+YOLO_MODELS     = ["yolov8n", "yolo11n", "yolo11s"]
 YOLO_MODELS_320 = ["yolo11n_320", "yolo11s_320"]
 
 
-def _docker_available_with_gpu() -> bool:
-    """Return True only if Docker is running AND --gpus all is accepted."""
-    try:
-        r = subprocess.run(["docker", "info"], capture_output=True, timeout=5)
-        if r.returncode != 0:
-            return False
-        r = subprocess.run(
-            ["docker", "images", "-q", DOCKER_IMAGE],
-            capture_output=True, text=True, timeout=5,
-        )
-        return bool(r.stdout.strip())
-    except Exception:
-        return False
-
-
-def _convert_with_docker(
-    model_name: str,
-    variant: str,
-    onnx_path: Path,
-    out_dir: Path,
-    config: dict,
-) -> None:
-    """Convert one model+variant using the Docker TRT toolchain image."""
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp)
-        bundle = tmp_path / "bundle.zip"
-        docker_out = tmp_path / "output"
-        docker_out.mkdir()
-
-        with zipfile.ZipFile(bundle, "w") as z:
-            z.write(onnx_path, arcname="model.onnx")
-            z.writestr("config.json", json.dumps(config))
-
-        result = subprocess.run(
-            [
-                "docker", "run", "--rm",
-                "--gpus", "all",
-                "-v", f"{tmp_path}:/input",
-                "-v", f"{docker_out}:/output",
-                DOCKER_IMAGE,
-                f"/input/bundle.zip",
-                "/output",
-            ],
-            capture_output=True,
-            text=True,
-            # TRT compilation can take several minutes for large models
-            timeout=600,
-        )
-
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"Docker TRT conversion failed for {model_name} {variant} "
-                f"(exit {result.returncode}):\n{result.stdout}\n{result.stderr}"
-            )
-
-        trt_file = docker_out / "model.trt"
-        if not trt_file.exists():
-            raise RuntimeError(f"No model.trt produced for {model_name} {variant}")
-
-        out_dir.mkdir(parents=True, exist_ok=True)
-        import shutil
-        shutil.copy2(trt_file, out_dir / "model.trt")
-        logs_file = docker_out / "logs.json"
-        if logs_file.exists():
-            shutil.copy2(logs_file, out_dir / "logs.json")
-
-
-@pytest.fixture(scope="session")
-def compiled_yolo_models() -> dict:
-    """
-    Convert YOLO models (FP16) once via the Docker TRT toolchain.
-    Caches results to tests/compiled_models/<model>/<variant>/model.trt.
-    Returns {(model_name, variant): Path-to-trt}.
-    """
-    if not _docker_available_with_gpu():
+def _require_backend(backend):
+    if not backend.is_available():
         pytest.skip(
-            f"Docker image '{DOCKER_IMAGE}' not available. "
-            "Build with: bash tensorrt/conversion-toolchain/build-toolchain.sh"
+            f"Backend '{backend.name}' not available — "
+            f"set {backend.docker_image_env} or build the toolchain image."
         )
 
+
+def _require_ultralytics():
     try:
         import ultralytics  # noqa: F401
     except ImportError:
         pytest.skip("ultralytics not installed — run: uv sync --group dev")
 
-    onnx_dir = COMPILED_DIR / "onnx"
-    onnx_dir.mkdir(parents=True, exist_ok=True)
+
+# ── Core backend fixture ────────────────────────────────────────────────────────
+
+@pytest.fixture(scope="session", params=[TRT, ORT], ids=["trt", "ort"])
+def backend(request):
+    return request.param
+
+
+# ── Conversion smoke fixtures ───────────────────────────────────────────────────
+
+@pytest.fixture(scope="module")
+def toolchain_output(backend, tmp_path_factory):
+    """Run the toolchain on the identity model. Returns the output directory."""
+    _require_backend(backend)
+
+    onnx = ARTIFACTS_DIR / "model.onnx"
+    if not onnx.exists():
+        pytest.skip(f"model.onnx not found at {onnx} — run generate_model.py first")
+
+    out_dir = tmp_path_factory.mktemp(f"{backend.name}_output")
+    backend.convert("identity", onnx, out_dir)
+    return out_dir
+
+
+# ── YOLO fixtures ───────────────────────────────────────────────────────────────
+
+@pytest.fixture(scope="session")
+def compiled_yolo_models(backend):
+    """Convert YOLO 640×640 models via the toolchain. Returns {model_name: Path}."""
+    _require_backend(backend)
+    _require_ultralytics()
 
     from tests.models import download_model
+
+    onnx_dir = backend.cache_dir / "onnx"
+    onnx_dir.mkdir(parents=True, exist_ok=True)
 
     result = {}
     for model_name in YOLO_MODELS:
         onnx = Path(download_model(model_name, str(onnx_dir)))
-        for variant, config in _CONFIGS.items():
-            trt = COMPILED_DIR / model_name / variant / "model.trt"
-            if trt.exists():
-                result[(model_name, variant)] = trt
-                continue
-            _convert_with_docker(model_name, variant, onnx, trt.parent, config)
-            result[(model_name, variant)] = trt
-
+        dest = backend.cache_dir / model_name / backend.output_filename
+        if not dest.exists():
+            backend.convert(model_name, onnx, dest.parent)
+        result[model_name] = dest
     return result
 
 
 @pytest.fixture(scope="session")
-def compiled_yolo_models_320() -> dict:
-    """
-    Convert yolo11n/yolo11s at 320×320 (FP16) via the Docker TRT toolchain.
-    Returns {(model_name, variant): Path-to-trt}.
-    """
-    if not _docker_available_with_gpu():
-        pytest.skip(f"Docker image '{DOCKER_IMAGE}' not available.")
-
-    try:
-        import ultralytics  # noqa: F401
-    except ImportError:
-        pytest.skip("ultralytics not installed — run: uv sync --group dev")
-
-    onnx_dir = COMPILED_DIR / "onnx"
-    onnx_dir.mkdir(parents=True, exist_ok=True)
+def compiled_yolo_models_320(backend):
+    """Convert YOLO 320×320 models via the toolchain. Returns {model_name: Path}."""
+    _require_backend(backend)
+    _require_ultralytics()
 
     from tests.models import download_model
+
+    onnx_dir = backend.cache_dir / "onnx"
+    onnx_dir.mkdir(parents=True, exist_ok=True)
 
     result = {}
     for model_name in YOLO_MODELS_320:
         onnx = Path(download_model(model_name, str(onnx_dir)))
-        for variant, config in _CONFIGS.items():
-            trt = COMPILED_DIR / model_name / variant / "model.trt"
-            if trt.exists():
-                result[(model_name, variant)] = trt
-                continue
-            _convert_with_docker(model_name, variant, onnx, trt.parent, config)
-            result[(model_name, variant)] = trt
-
+        dest = backend.cache_dir / model_name / backend.output_filename
+        if not dest.exists():
+            backend.convert(model_name, onnx, dest.parent)
+        result[model_name] = dest
     return result
