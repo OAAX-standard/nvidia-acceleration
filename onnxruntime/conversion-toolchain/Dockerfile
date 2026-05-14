@@ -3,7 +3,7 @@ FROM python:3.11-slim as base
 
 RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections
 RUN apt-get update -qq -y --fix-missing \
-  && apt-get install -qq -y gcc g++ curl make xxd wget apt-utils software-properties-common git autoconf \
+  && apt-get install -qq -y gcc g++ curl make xxd wget apt-utils git autoconf \
     automake libtool python3 unzip cmake build-essential protobuf-compiler libprotoc-dev > /dev/null
 
 WORKDIR /app
