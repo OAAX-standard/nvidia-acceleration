@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import os.path
 import shutil
 import subprocess
 import tempfile
@@ -117,6 +118,26 @@ class _TrtBackend(Backend):
         return trt
 
 
+class _TrtInt8Backend(_TrtBackend):
+    """TRT backend variant that bundles calibration images for INT8 quantization."""
+
+    def __init__(self, calib_n: int = 50, **kwargs):
+        super().__init__(**kwargs)
+        self.calib_n = calib_n
+
+    def _prepare_input(self, onnx_path: Path, tmp_dir: Path) -> str:
+        from tests.models import get_calibration_images
+
+        images = get_calibration_images()[: self.calib_n]
+        bundle = tmp_dir / "bundle.zip"
+        with zipfile.ZipFile(bundle, "w") as z:
+            z.write(onnx_path, arcname="model.onnx")
+            z.writestr("config.json", json.dumps(self.conversion_config))
+            for img in images:
+                z.write(img, arcname=f"calib/{os.path.basename(img)}")
+        return "/input/bundle.zip"
+
+
 class _OrtBackend(Backend):
     def _prepare_input(self, onnx_path: Path, tmp_dir: Path) -> str:
         import onnx as _onnx
@@ -137,7 +158,7 @@ class _OrtBackend(Backend):
 TRT = _TrtBackend(
     name="trt",
     docker_image_env="NVIDIA_TRT_TOOLCHAIN_IMAGE",
-    default_image="oaax-nvidia-tensorrt-toolchain:1.3.0",
+    default_image="oaax-nvidia-tensorrt-toolchain:1.4.0",
     gpu_required=True,
     output_filename="model.trt",
     min_output_bytes=1024 * 1024,
@@ -158,4 +179,17 @@ ORT = _OrtBackend(
     success_markers=["Simplified ONNX model successfully"],
 )
 
-BACKENDS: dict[str, Backend] = {"trt": TRT, "ort": ORT}
+TRT_INT8 = _TrtInt8Backend(
+    calib_n=50,
+    name="trt_int8",
+    docker_image_env="NVIDIA_TRT_TOOLCHAIN_IMAGE",
+    default_image="oaax-nvidia-tensorrt-toolchain:1.4.0",
+    gpu_required=True,
+    output_filename="model.trt",
+    min_output_bytes=1024 * 1024,
+    conversion_config={"precision": "int8", "workspace_gb": 2, "calibration_data": "calib/"},
+    docker_timeout=900,
+    success_markers=["Successful", "model.trt"],
+)
+
+BACKENDS: dict[str, Backend] = {"trt": TRT, "ort": ORT, "trt_int8": TRT_INT8}

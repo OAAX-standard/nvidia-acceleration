@@ -39,7 +39,7 @@ def header(title: str) -> None:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--backend",     choices=["trt", "ort"], default="trt")
+    p.add_argument("--backend",     choices=["trt", "ort", "trt_int8"], default="trt")
     p.add_argument("--runtime-lib", default="")
     p.add_argument("--runs",        type=int, default=100)
     p.add_argument("--warmup",      type=int, default=10)

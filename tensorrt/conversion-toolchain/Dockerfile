@@ -9,7 +9,9 @@ COPY tensorrt/conversion-toolchain/conversion_toolchain /app/conversion_toolchai
 COPY tensorrt/conversion-toolchain/scripts/ /app/scripts
 
 RUN pip install --no-cache-dir uv && \
-    uv sync --frozen --no-dev
+    uv sync --frozen --no-dev && \
+    ln -s /usr/local/lib/python3.12/dist-packages/tensorrt \
+          /app/.venv/lib/python3.12/site-packages/tensorrt
 
 ENV PATH="/app/.venv/bin:$PATH"
 
