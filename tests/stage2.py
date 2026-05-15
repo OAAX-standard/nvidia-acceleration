@@ -67,8 +67,11 @@ def find_lib_dir(lib_arg: str, backend_name: str) -> str:
             return str(p)
     runtime_dir = default_runtime_dir(backend_name)
     candidates = sorted(runtime_dir.glob("**/libRuntimeLibrary.so"))
-    x86 = [c for c in candidates if "x86_64" in str(c)]
-    chosen = x86[0] if x86 else (candidates[0] if candidates else None)
+    # Prefer x86_64 (case-insensitive); exclude aarch64 paths
+    x86 = [c for c in candidates if "x86_64" in str(c).lower() and "aarch64" not in str(c).lower()]
+    pool = x86 if x86 else candidates
+    # Prefer CUDA 13 over older versions (sorted alphabetically, "13" > "12" > "11")
+    chosen = pool[-1] if pool else None
     return str(chosen.parent) if chosen else str(runtime_dir / "build" / "bin")
 
 

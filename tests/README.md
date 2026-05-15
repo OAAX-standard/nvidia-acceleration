@@ -48,7 +48,7 @@ Benchmarks compiled models using the OAAX v2 runtime library. Requires stage1 to
 
 ```bash
 uv run python -m tests.stage2 --backend trt \
-  --runtime-lib tensorrt/runtime-library/build/NVIDIA_TENSORRT/x86_64/Ubuntu/22.04/library-cuda_12/bin/libRuntimeLibrary.so
+  --runtime-lib tensorrt/runtime-library/build/NVIDIA_TENSORRT/x86_64/Ubuntu/22.04/library-cuda_13/bin/libRuntimeLibrary.so
 
 uv run python -m tests.stage2 --backend ort \
   --runtime-lib onnxruntime/runtime-library/build/bin/libRuntimeLibrary.so
