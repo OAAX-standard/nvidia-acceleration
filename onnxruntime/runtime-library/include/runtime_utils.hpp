@@ -1,4 +1,3 @@
-
 #ifndef RUNTIME_UTILS_HPP
 #define RUNTIME_UTILS_HPP
 
@@ -10,22 +9,16 @@
 
 using namespace std;
 
-// Get output names from the ONNX Runtime session
 vector<char *> get_output_names(Ort::Session &session);
-
-// Map tensor_data_type to ONNX Runtime ONNXTensorElementDataType
-ONNXTensorElementDataType map_to_ort_type(tensor_data_type t);
-
-// Map ONNX Runtime ONNXTensorElementDataType to tensor_data_type
-tensor_data_type map_to_tensors_struct_type(ONNXTensorElementDataType type);
-
+ONNXTensorElementDataType map_to_ort_type(TensorElementType t);
+TensorElementType map_to_tensors_struct_type(ONNXTensorElementDataType type);
+int get_element_byte_size(TensorElementType t);
+void deep_free_tensors(Tensors *t);
+void free_queue(moodycamel::ConcurrentQueue<Tensors *> &queue);
 shared_ptr<spdlog::logger> initialize_logger(const string &log_file,
-                                             int file_level = spdlog::level::info,
-                                             int console_level = spdlog::level::info,
-                                             const string prefix = "OAAX");
-
-void destroy_logger(std::shared_ptr<spdlog::logger> logger);
-
-void free_queue(moodycamel::ConcurrentQueue<tensors_struct *> &queue);
+                                              int file_level,
+                                              int console_level,
+                                              const string &prefix);
+void destroy_logger(const shared_ptr<spdlog::logger> &logger);
 
 #endif // RUNTIME_UTILS_HPP
