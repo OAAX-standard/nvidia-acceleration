@@ -95,13 +95,14 @@ static void inference_thread_func(ModelState *ms)
             for (auto &s : input_name_strs) input_names.push_back(s.c_str());
 
             int req_id = input->id;
-            deep_free_tensors(input);
-            input = nullptr;
 
             auto ort_outputs = ms->session->Run(
                 Ort::RunOptions{nullptr},
                 input_names.data(), ort_inputs.data(), ort_inputs.size(),
                 ms->output_names.data(), ms->output_names.size());
+
+            deep_free_tensors(input);
+            input = nullptr;
 
             size_t n = ort_outputs.size();
             Tensors *out = (Tensors *)malloc(sizeof(Tensors));
