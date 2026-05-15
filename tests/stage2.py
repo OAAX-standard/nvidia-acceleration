@@ -54,7 +54,7 @@ def parse_args() -> argparse.Namespace:
 def default_runtime_dir(backend_name: str) -> Path:
     base = ROOT / f"{backend_name}runtime"[3:] if backend_name == "ort" else ROOT / "tensorrt"
     # onnxruntime or tensorrt
-    name_map = {"trt": "tensorrt", "ort": "onnxruntime"}
+    name_map = {"trt": "tensorrt", "trt_int8": "tensorrt", "ort": "onnxruntime"}
     return ROOT / name_map[backend_name] / "runtime-library"
 
 
@@ -132,7 +132,8 @@ def run_inference_test(
 
     input_name, input_shape = _input_config(model_name)
     env = os.environ.copy()
-    env["LD_LIBRARY_PATH"] = f"{TEST_BUILD_DIR}:{lib_dir}:{env.get('LD_LIBRARY_PATH', '')}"
+    system_cuda = "/usr/local/cuda/lib64"
+    env["LD_LIBRARY_PATH"] = f"{TEST_BUILD_DIR}:{lib_dir}:{system_cuda}:{env.get('LD_LIBRARY_PATH', '')}"
 
     try:
         r = subprocess.run(
