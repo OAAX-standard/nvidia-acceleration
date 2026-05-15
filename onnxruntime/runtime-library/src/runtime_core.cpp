@@ -78,12 +78,13 @@ static void inference_thread_func(ModelState *ms)
         logger->debug("Model {}: dequeued input id={}", ms->model_id, input->id);
 
         try {
+            vector<string> input_name_strs;
             vector<const char *> input_names;
             vector<Ort::Value> ort_inputs;
 
             for (int i = 0; i < input->num_tensors; ++i) {
                 TensorDescriptor &td = input->tensors[i];
-                input_names.push_back(td.name);
+                input_name_strs.emplace_back(td.name);
                 vector<int64_t> shape(td.shape, td.shape + td.rank);
                 ONNXTensorElementDataType dtype = map_to_ort_type(td.data_type);
                 ort_inputs.push_back(Ort::Value::CreateTensor(
@@ -91,6 +92,7 @@ static void inference_thread_func(ModelState *ms)
                     td.data, td.data_size,
                     shape.data(), shape.size(), dtype));
             }
+            for (auto &s : input_name_strs) input_names.push_back(s.c_str());
 
             int req_id = input->id;
             deep_free_tensors(input);
