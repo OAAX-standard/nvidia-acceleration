@@ -25,7 +25,7 @@ if(NOT DEFINED RUNTIME_INCLUDE_DIR)
     set(RUNTIME_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../tensorrt/runtime-library/include")
 endif()
 
-# tensors_struct.h is bundled in tests/runtime/include/
+# interface.h is bundled in tests/runtime/include/
 set(TESTS_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 message(STATUS "Runtime lib dir:     ${RUNTIME_LIB_DIR}")

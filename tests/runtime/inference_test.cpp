@@ -1,11 +1,11 @@
 /**
- * NVIDIA OAAX v1 runtime benchmark.
+ * NVIDIA OAAX v2 runtime benchmark.
  *
- * Runs sequential inference (send → poll receive → measure latency) and
+ * Runs sequential inference (enqueue → retrieve → measure latency) and
  * reports avg / min / max / p95 latency and throughput.
  *
  * Usage:
- *   ./inference_test <model.trt> [options]
+ *   ./inference_test <model.trt|model.onnx> [options]
  *
  * Options:
  *   --input-name  NAME     tensor name (default: input)
@@ -24,80 +24,29 @@
 #include <numeric>
 #include <sstream>
 #include <string>
-#include <thread>
 #include <vector>
 
-extern "C" {
-#include "tensors_struct.h"
-}
-
-extern "C" {
-    int  runtime_initialization();
-    int  runtime_initialization_with_args(int length, char** keys, void** values);
-    int  runtime_model_loading(const char* path);
-    int  send_input(tensors_struct* input);
-    int  receive_output(tensors_struct** output);
-    int  runtime_destruction();
-    const char* runtime_error_message();
-    const char* runtime_version();
-    const char* runtime_name();
-}
+#include "interface.h"
+#include "test_utils.h"
 
 using Clock = std::chrono::steady_clock;
 using Ms    = std::chrono::duration<double, std::milli>;
 
 #define CHECK(cond, msg) \
-    do { if (!(cond)) { std::cerr << "FAIL: " << (msg) << std::endl; runtime_destruction(); return 1; } } while (0)
+    do { if (!(cond)) { std::cerr << "FAIL: " << (msg) << std::endl; runtime_cleanup(); return 1; } } while (0)
 
-static tensors_struct* make_input(const char* name, const std::vector<size_t>& shape) {
-    tensors_struct* ts = (tensors_struct*)malloc(sizeof(tensors_struct));
-    ts->num_tensors = 1;
-
-    ts->names = (char**)malloc(sizeof(char*));
-    ts->names[0] = strdup(name);
-
-    ts->data_types = (tensor_data_type*)malloc(sizeof(tensor_data_type));
-    ts->data_types[0] = DATA_TYPE_FLOAT;
-
-    ts->ranks = (size_t*)malloc(sizeof(size_t));
-    ts->ranks[0] = shape.size();
-
-    ts->shapes = (size_t**)malloc(sizeof(size_t*));
-    ts->shapes[0] = (size_t*)malloc(shape.size() * sizeof(size_t));
-    size_t n_elems = 1;
-    for (size_t i = 0; i < shape.size(); i++) {
-        ts->shapes[0][i] = shape[i];
-        n_elems *= shape[i];
-    }
-
-    ts->data = (void**)malloc(sizeof(void*));
-    float* buf = (float*)calloc(n_elems, sizeof(float));
-    for (size_t i = 0; i < n_elems; i++) buf[i] = 0.5f;
-    ts->data[0] = buf;
-
-    return ts;
+// Wrap make_float_input for vector<int> shape
+static Tensors* make_input(const char* name, const std::vector<int>& shape, int request_id) {
+    return make_float_input(name, const_cast<int*>(shape.data()), (int)shape.size(), request_id);
 }
 
-static void free_tensors(tensors_struct* ts) {
-    if (!ts) return;
-    for (size_t i = 0; i < ts->num_tensors; i++) {
-        free(ts->names[i]);
-        free(ts->shapes[i]);
-        free(ts->data[i]);
-    }
-    free(ts->names);
-    free(ts->data_types);
-    free(ts->ranks);
-    free(ts->shapes);
-    free(ts->data);
-    free(ts);
-}
-
-static tensors_struct* poll_output(int max_polls = 500) {
-    tensors_struct* out = nullptr;
+// Poll with a per-call timeout until success or max_polls exhausted
+static Tensors* poll_output(int timeout_per_poll_ms = 50, int max_polls = 200) {
+    Tensors* out = nullptr;
+    int model_id = -1;
     for (int i = 0; i < max_polls; i++) {
-        if (receive_output(&out) == 0) return out;
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        if (runtime_retrieve_output(&model_id, &out, timeout_per_poll_ms) == RUNTIME_STATUS_SUCCESS)
+            return out;
     }
     return nullptr;
 }
@@ -108,18 +57,18 @@ static double percentile(std::vector<double> v, double p) {
     return v[std::min(idx, v.size() - 1)];
 }
 
-static std::vector<size_t> parse_shape(const std::string& s) {
-    std::vector<size_t> dims;
+static std::vector<int> parse_shape(const std::string& s) {
+    std::vector<int> dims;
     std::istringstream ss(s);
     std::string tok;
     while (std::getline(ss, tok, ','))
-        dims.push_back((size_t)std::stoul(tok));
+        dims.push_back(std::stoi(tok));
     return dims;
 }
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::cerr << "Usage: " << argv[0] << " <model.trt> [options]\n"
+        std::cerr << "Usage: " << argv[0] << " <model.trt|model.onnx> [options]\n"
                   << "  --input-name  NAME\n"
                   << "  --input-shape N,N,...  (default: 1,3,640,640)\n"
                   << "  --runs        N        (default: 100)\n"
@@ -130,12 +79,12 @@ int main(int argc, char** argv) {
     }
 
     const char* model_path = argv[1];
-    std::string input_name  = "input";
-    std::string shape_str   = "1,3,640,640";
-    int runs       = 100;
-    int warmup     = 10;
-    int log_level  = 3;
-    bool validate  = true;
+    std::string input_name = "input";
+    std::string shape_str  = "1,3,640,640";
+    int runs      = 100;
+    int warmup    = 10;
+    int log_level = 3;
+    bool validate = true;
 
     for (int i = 2; i < argc; i++) {
         if      (strcmp(argv[i], "--input-name")  == 0 && i+1 < argc) input_name = argv[++i];
@@ -148,7 +97,7 @@ int main(int argc, char** argv) {
 
     auto shape = parse_shape(shape_str);
 
-    std::cout << "=== NVIDIA OAAX Inference Benchmark ===" << std::endl;
+    std::cout << "=== NVIDIA OAAX v2 Inference Benchmark ===" << std::endl;
     std::cout << "Model      : " << model_path << std::endl;
     std::cout << "Input      : " << input_name << " [" << shape_str << "]" << std::endl;
     std::cout << "Warmup     : " << warmup << " runs" << std::endl;
@@ -157,26 +106,28 @@ int main(int argc, char** argv) {
     // Init
     std::cout << "[1] Initializing runtime..." << std::endl;
     std::string ll_str = std::to_string(log_level);
-    char* keys[]   = {(char*)"log_level"};
-    void* values[] = {(void*)ll_str.c_str()};
-    CHECK(runtime_initialization_with_args(1, keys, values) == 0, "runtime_initialization_with_args failed");
-    std::cout << "  " << runtime_name() << " v" << runtime_version() << std::endl;
+    const char* keys[]   = {"log_level"};
+    const char* values[] = {ll_str.c_str()};
+    Config cfg{1, keys, values};
+    CHECK(runtime_init(cfg) == RUNTIME_STATUS_SUCCESS, "runtime_init failed");
+    std::cout << "  " << runtime_get_name() << " v" << runtime_get_version() << std::endl;
 
     // Load
     std::cout << "[2] Loading model..." << std::endl;
     auto t_load = Clock::now();
-    CHECK(runtime_model_loading(model_path) == 0,
-          std::string("runtime_model_loading failed: ") + (runtime_error_message() ? runtime_error_message() : ""));
+    ModelConfig mc{model_path, nullptr, 0, {0, nullptr, nullptr}};
+    CHECK(runtime_load_models(1, &mc) == RUNTIME_STATUS_SUCCESS,
+          std::string("runtime_load_models failed: ") + (runtime_get_error() ? runtime_get_error() : ""));
     double load_ms = Ms(Clock::now() - t_load).count();
     std::cout << "  Loaded in " << load_ms << " ms" << std::endl;
 
     // Warmup
     std::cout << "[3] Warming up (" << warmup << " runs)..." << std::endl;
     for (int i = 0; i < warmup; i++) {
-        tensors_struct* inp = make_input(input_name.c_str(), shape);
-        CHECK(send_input(inp) == 0, "send_input failed during warmup");
-        tensors_struct* out = poll_output();
-        CHECK(out != nullptr, "receive_output timed out during warmup");
+        Tensors* inp = make_input(input_name.c_str(), shape, i);
+        CHECK(runtime_enqueue_input(0, inp) == RUNTIME_STATUS_SUCCESS, "runtime_enqueue_input failed during warmup");
+        Tensors* out = poll_output();
+        CHECK(out != nullptr, "runtime_retrieve_output timed out during warmup");
         free_tensors(out);
     }
     std::cout << "  Done" << std::endl;
@@ -187,16 +138,15 @@ int main(int argc, char** argv) {
     auto bench_start = Clock::now();
 
     for (int i = 0; i < runs; i++) {
-        tensors_struct* inp = make_input(input_name.c_str(), shape);
+        Tensors* inp = make_input(input_name.c_str(), shape, i);
         auto t0 = Clock::now();
-        CHECK(send_input(inp) == 0, "send_input failed during benchmark");
-        tensors_struct* out = poll_output();
-        CHECK(out != nullptr, "receive_output timed out during benchmark");
+        CHECK(runtime_enqueue_input(0, inp) == RUNTIME_STATUS_SUCCESS, "runtime_enqueue_input failed during benchmark");
+        Tensors* out = poll_output();
+        CHECK(out != nullptr, "runtime_retrieve_output timed out during benchmark");
         latencies[i] = Ms(Clock::now() - t0).count();
 
-        if (validate && i == 0) {
+        if (validate && i == 0)
             CHECK(out->num_tensors > 0, "output has no tensors");
-        }
         free_tensors(out);
     }
 
@@ -217,8 +167,7 @@ int main(int argc, char** argv) {
 
     // Cleanup
     std::cout << "\n[5] Cleaning up..." << std::endl;
-    CHECK(runtime_destruction() == 0, "runtime_destruction failed");
+    CHECK(runtime_cleanup() == RUNTIME_STATUS_SUCCESS, "runtime_cleanup failed");
     std::cout << "  Done" << std::endl;
-
     return 0;
 }

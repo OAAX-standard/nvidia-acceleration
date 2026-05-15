@@ -44,7 +44,7 @@ Converted models are cached — re-running stage1 skips models that already exis
 
 ## Stage 2 — Benchmarking
 
-Benchmarks compiled models using the OAAX runtime library. Requires stage1 to have run first.
+Benchmarks compiled models using the OAAX v2 runtime library. Requires stage1 to have run first.
 
 ```bash
 uv run python -m tests.stage2 --backend trt \
