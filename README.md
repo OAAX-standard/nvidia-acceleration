@@ -80,13 +80,16 @@ docker run --rm --gpus all \
 # Output: output/model.trt + output/logs.json
 ```
 
-**2. Run inference** — load `libRuntimeLibrary.so` and use the [OAAX C API](https://github.com/OAAX-standard/OAAX):
+**2. Run inference** — load `libRuntimeLibrary.so` and use the [OAAX v2 C API](https://github.com/OAAX-standard/OAAX):
 ```c
-runtime_initialization(2, (char*[]){"log_level=2", "log_file=runtime.log"});
-runtime_load_model("/path/to/model.trt", model_config_json);
-send_input(tensors);
-receive_output(&out_tensors);
-runtime_destruct();
+Config cfg = {0, NULL, NULL};
+runtime_init(cfg);
+ModelConfig mc = {"/path/to/model.trt", NULL, 0, {0, NULL, NULL}};
+runtime_load_models(1, &mc);
+runtime_enqueue_input(0, input_tensors);
+int model_id; Tensors *out;
+runtime_retrieve_output(&model_id, &out, 5000 /* ms */);
+runtime_cleanup();
 ```
 
 See [`tensorrt/conversion-toolchain/README.md`](tensorrt/conversion-toolchain/README.md) and [`tensorrt/runtime-library/README.md`](tensorrt/runtime-library/README.md) for full details.

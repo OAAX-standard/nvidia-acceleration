@@ -139,13 +139,6 @@ FetchContent_Declare(concurrentqueue
     GIT_SHALLOW    TRUE)
 FetchContent_MakeAvailable(concurrentqueue)
 
-# tools repo contains c-utilities as a subdirectory
-FetchContent_Declare(tools
-    GIT_REPOSITORY https://github.com/OAAX-standard/tools
-    GIT_TAG        main
-    GIT_SHALLOW    TRUE
-    SOURCE_SUBDIR  c-utilities)
-FetchContent_MakeAvailable(tools)
 
 # === Library Target ===
 file(GLOB_RECURSE SRC
@@ -192,7 +185,6 @@ target_link_libraries(RuntimeLibrary PUBLIC
     nvinfer_plugin
     cudart
     spdlog::spdlog
-    c_utilities
     stdc++
     -Wl,--end-group)
 
