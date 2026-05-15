@@ -15,7 +15,7 @@ NVIDIA GPU implementation of the [OAAX standard](https://github.com/OAAX-standar
 nvidia-acceleration/
 ├── tensorrt/
 │   ├── conversion-toolchain/   # Compiles ONNX → .trt engine (GPU required)
-│   └── runtime-library/        # Loads and runs .trt engines via OAAX C API
+│   └── runtime-library/        # Loads and runs .trt engines via OAAX v2 C API
 ├── onnxruntime/
 │   ├── conversion-toolchain/   # Simplifies ONNX for ORT+CUDA (no GPU needed)
 │   └── runtime-library/        # Runs simplified ONNX via ORT+CUDA EP
@@ -80,13 +80,27 @@ docker run --rm --gpus all \
 # Output: output/model.trt + output/logs.json
 ```
 
-**2. Run inference** — load `libRuntimeLibrary.so` and use the [OAAX C API](https://github.com/OAAX-standard/OAAX):
+**2. Run inference** — load `libRuntimeLibrary.so` and use the [OAAX v2 C API](https://github.com/OAAX-standard/OAAX):
 ```c
-runtime_initialization(2, (char*[]){"log_level=2", "log_file=runtime.log"});
-runtime_load_model("/path/to/model.trt", model_config_json);
-send_input(tensors);
-receive_output(&out_tensors);
-runtime_destruct();
+// Initialize runtime with key-value config
+const char *keys[]   = {"log_level", "log_file"};
+const char *values[] = {"2", "runtime.log"};
+Config cfg = {2, keys, values};
+runtime_init(cfg);
+
+// Load model(s) — supports multiple models at once
+ModelConfig mc = {.file_path = "/path/to/model.trt"};
+runtime_load_models(1, &mc);
+
+// Enqueue input (model_id=0 for first model)
+runtime_enqueue_input(0, input_tensors);
+
+// Retrieve output (blocks up to 1000ms)
+int model_id;
+Tensors *out = NULL;
+runtime_retrieve_output(&model_id, &out, 1000);
+
+runtime_cleanup();
 ```
 
 See [`tensorrt/conversion-toolchain/README.md`](tensorrt/conversion-toolchain/README.md) and [`tensorrt/runtime-library/README.md`](tensorrt/runtime-library/README.md) for full details.
@@ -129,7 +143,7 @@ docker run --rm \
 # Output: output/*-simplified.onnx + output/logs.json
 ```
 
-**2. Run inference** — same OAAX C API, pointing at the simplified `.onnx` file.
+**2. Run inference** — same OAAX v2 C API, pointing at the simplified `.onnx` file.
 
 See [`onnxruntime/conversion-toolchain/README.md`](onnxruntime/conversion-toolchain/README.md) for full details.
 
@@ -151,7 +165,7 @@ See [`onnxruntime/conversion-toolchain/README.md`](onnxruntime/conversion-toolch
 [ ] Dev:     bash tensorrt/conversion-toolchain/build-toolchain.sh
 [ ] Target:  zip bundle.zip model.onnx config.json
 [ ] Target:  docker run ... oaax-nvidia-tensorrt-toolchain → model.trt
-[ ] App:     dlopen libRuntimeLibrary.so, OAAX C API with model.trt
+[ ] App:     dlopen libRuntimeLibrary.so, OAAX v2 C API with model.trt
 ```
 
 For a complete working example see [OAAX-standard/examples](https://github.com/OAAX-standard/examples).

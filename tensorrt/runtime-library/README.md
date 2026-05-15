@@ -1,6 +1,22 @@
 # Runtime Library
 
-C++ shared library (`libRuntimeLibrary.so`) that implements the OAAX C API using native TensorRT. It deserializes a `.trt` engine produced by the conversion toolchain and runs inference on an NVIDIA GPU.
+C++ shared library (`libRuntimeLibrary.so`) that implements the OAAX v2 C API using native TensorRT. It deserializes a `.trt` engine produced by the conversion toolchain and runs inference on an NVIDIA GPU.
+
+## API overview
+
+| Function | Description |
+|---|---|
+| `runtime_init(Config)` | Initialize the runtime with key-value configuration |
+| `runtime_load_models(n, ModelConfig[])` | Load one or more models; each is assigned an integer `model_id` |
+| `runtime_enqueue_input(model_id, Tensors*)` | Enqueue input tensors for a specific model (non-blocking) |
+| `runtime_retrieve_output(&model_id, &Tensors*, timeout_ms)` | Retrieve output tensors; blocks up to `timeout_ms` |
+| `runtime_cleanup()` | Free all resources |
+| `runtime_get_error()` | Return the last error message |
+| `runtime_get_version()` | Return the runtime version string |
+| `runtime_get_name()` | Return the runtime name string |
+| `runtime_get_info()` | Return a JSON string with diagnostic information |
+
+Key types: `Config` (`{length, keys[], values[]}`), `ModelConfig` (`{file_path, model_data, model_size, config}`), `Tensors` (`{id, num_tensors, TensorDescriptor[]}`), `RuntimeStatus` (return code enum).
 
 ## Build the runtime
 
@@ -79,7 +95,7 @@ Verify: `nvidia-smi`
 
 ## Test
 
-A standalone C test is provided in `test/test_runtime.c`. It exercises the full OAAX API cycle. Run it inside the toolchain container (which has TensorRT installed):
+A standalone C test is provided in `test/test_runtime.c`. It exercises the full OAAX v2 API cycle (`runtime_init` → `runtime_load_models` → `runtime_enqueue_input` → `runtime_retrieve_output` → `runtime_cleanup`). Run it inside the toolchain container (which has TensorRT installed):
 
 ```bash
 docker run --rm --gpus all \
