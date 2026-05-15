@@ -8,6 +8,7 @@
  *   --input-shape N,N,...  comma-separated dims (default: 1,3,640,640)
  *   --runs        N        benchmark iterations (default: 100)
  *   --warmup      N        warmup iterations (default: 10)
+ *   --in-flight   N        number of requests in flight (default: 1)
  *   --log-level   N        0=trace ... 4=err (default: 3)
  *   --no-validate          skip output tensor sanity check
  */
@@ -76,26 +77,29 @@ static std::vector<int> parse_shape(const std::string& s) {
 int main(int argc, char** argv) {
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <model.trt|model.onnx> [options]\n"
-                  << "  --input-name NAME  --input-shape N,N,...  --runs N  --warmup N  --log-level N  --no-validate\n";
+                  << "  --input-name NAME  --input-shape N,N,...  --runs N  --warmup N"
+                  << "  --in-flight N  --log-level N  --no-validate\n";
         return 1;
     }
     const char* model_path = argv[1];
     std::string input_name = "input", shape_str = "1,3,640,640";
-    int runs = 100, warmup = 10, log_level = 3;
+    int runs = 100, warmup = 10, log_level = 3, in_flight = 1;
     bool validate = true;
     for (int i = 2; i < argc; i++) {
         if      (strcmp(argv[i], "--input-name")  == 0 && i+1 < argc) input_name = argv[++i];
         else if (strcmp(argv[i], "--input-shape") == 0 && i+1 < argc) shape_str  = argv[++i];
         else if (strcmp(argv[i], "--runs")        == 0 && i+1 < argc) runs       = atoi(argv[++i]);
         else if (strcmp(argv[i], "--warmup")      == 0 && i+1 < argc) warmup     = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--in-flight")   == 0 && i+1 < argc) in_flight  = atoi(argv[++i]);
         else if (strcmp(argv[i], "--log-level")   == 0 && i+1 < argc) log_level  = atoi(argv[++i]);
         else if (strcmp(argv[i], "--no-validate") == 0)               validate   = false;
     }
+    if (in_flight < 1) in_flight = 1;
     auto shape = parse_shape(shape_str);
 
     std::cout << "=== NVIDIA OAAX v2 Inference Benchmark ===" << std::endl;
     std::cout << "Model: " << model_path << "  Input: " << input_name << " [" << shape_str << "]" << std::endl;
-    std::cout << "Warmup: " << warmup << "  Runs: " << runs << std::endl << std::endl;
+    std::cout << "Warmup: " << warmup << "  Runs: " << runs << "  In-flight: " << in_flight << std::endl << std::endl;
 
     std::cout << "[1] Initializing runtime..." << std::endl;
     std::string ll_str = std::to_string(log_level);
@@ -113,39 +117,52 @@ int main(int argc, char** argv) {
     double load_ms = Ms(Clock::now() - t_load).count();
     std::cout << "  Loaded in " << load_ms << " ms" << std::endl;
 
-    std::cout << "[3] Warming up (" << warmup << " runs)..." << std::endl;
+    std::cout << "[3] Warming up (" << warmup << " runs, sequential)..." << std::endl;
     for (int i = 0; i < warmup; i++) {
         Tensors* inp = make_input(input_name.c_str(), shape, i);
         CHECK(runtime_enqueue_input(0, inp) == RUNTIME_STATUS_SUCCESS, "runtime_enqueue_input failed during warmup");
         Tensors* out = poll_output();
         CHECK(out != nullptr, "runtime_retrieve_output timed out during warmup");
+        if (validate && i == 0) CHECK(out->num_tensors > 0, "output has no tensors");
         free_tensors(out);
     }
     std::cout << "  Done" << std::endl;
 
-    std::cout << "[4] Benchmarking (" << runs << " runs)..." << std::endl;
+    std::cout << "[4] Benchmarking (" << runs << " runs, " << in_flight << " in-flight)..." << std::endl;
+
+    // Pre-fill the pipeline
+    int sent = 0;
+    for (; sent < std::min(in_flight, runs); sent++) {
+        Tensors* inp = make_input(input_name.c_str(), shape, sent);
+        CHECK(runtime_enqueue_input(0, inp) == RUNTIME_STATUS_SUCCESS, "runtime_enqueue_input failed");
+    }
+
+    // Sliding window: dequeue one output → enqueue the next input
     std::vector<double> latencies(runs);
     auto bench_start = Clock::now();
-    for (int i = 0; i < runs; i++) {
-        Tensors* inp = make_input(input_name.c_str(), shape, i);
+    for (int received = 0; received < runs; received++) {
         auto t0 = Clock::now();
-        CHECK(runtime_enqueue_input(0, inp) == RUNTIME_STATUS_SUCCESS, "runtime_enqueue_input failed");
         Tensors* out = poll_output();
         CHECK(out != nullptr, "runtime_retrieve_output timed out");
-        latencies[i] = Ms(Clock::now() - t0).count();
-        if (validate && i == 0) CHECK(out->num_tensors > 0, "output has no tensors");
+        latencies[received] = Ms(Clock::now() - t0).count();
         free_tensors(out);
+
+        if (sent < runs) {
+            Tensors* inp = make_input(input_name.c_str(), shape, sent++);
+            CHECK(runtime_enqueue_input(0, inp) == RUNTIME_STATUS_SUCCESS, "runtime_enqueue_input failed");
+        }
     }
     double bench_ms = Ms(Clock::now() - bench_start).count();
+
     double avg = std::accumulate(latencies.begin(), latencies.end(), 0.0) / latencies.size();
     double mn  = *std::min_element(latencies.begin(), latencies.end());
-    double mx  = *std::max_element(latencies.begin(), latencies.end());
     double p95 = percentile(latencies, 95.0);
+
     std::cout << "\n=== Results ===" << std::endl;
     std::cout << "  Load time  : " << load_ms << " ms" << std::endl;
+    std::cout << "  In-flight  : " << in_flight << std::endl;
     std::cout << "  Avg latency: " << avg << " ms" << std::endl;
     std::cout << "  Min latency: " << mn  << " ms" << std::endl;
-    std::cout << "  Max latency: " << mx  << " ms" << std::endl;
     std::cout << "  p95 latency: " << p95 << " ms" << std::endl;
     std::cout << "  Throughput : " << runs * 1000.0 / bench_ms << " img/s" << std::endl;
 

@@ -45,6 +45,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--warmup",      type=int, default=10)
     p.add_argument("--models",      default="")
     p.add_argument("--csv",         default="")
+    p.add_argument("--in-flight",   type=int, default=1)
     p.add_argument("--skip-build",  action="store_true")
     p.add_argument("--log-level",   type=int, default=3)
     return p.parse_args()
@@ -119,6 +120,7 @@ def parse_field(text: str, pattern: str) -> str:
 def run_inference_test(
     model_path: Path, model_name: str,
     runs: int, warmup: int, log_level: int, lib_dir: str,
+    in_flight: int = 1,
 ) -> tuple | None:
     binary = inference_test_path()
     if not binary.exists():
@@ -136,6 +138,7 @@ def run_inference_test(
              "--input-shape", input_shape,
              "--runs",        str(runs),
              "--warmup",      str(warmup),
+             "--in-flight",   str(in_flight),
              "--log-level",   str(log_level),
              "--no-validate"],
             capture_output=True, text=True, env=env,
@@ -211,7 +214,7 @@ def main() -> None:
         pass_count = fail_count = 0
         for model_path, model_name in models:
             r = run_inference_test(model_path, model_name, args.runs, args.warmup,
-                                   args.log_level, lib_dir)
+                                   args.log_level, lib_dir, args.in_flight)
             if r:
                 print(_ROW.format(model_name, *r))
                 if csv_writer:
