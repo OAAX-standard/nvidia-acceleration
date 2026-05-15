@@ -162,7 +162,7 @@ TRT = _TrtBackend(
     gpu_required=True,
     output_filename="model.trt",
     min_output_bytes=1024 * 1024,
-    conversion_config={"precision": "fp16", "workspace_gb": 2},
+    conversion_config={"precision": "fp16", "workspace_gb": 2, "optimization_level": 5, "avg_timing": 16},
     docker_timeout=600,
     success_markers=["Successful", "model.trt"],
 )
@@ -187,7 +187,7 @@ TRT_INT8 = _TrtInt8Backend(
     gpu_required=True,
     output_filename="model.trt",
     min_output_bytes=1024 * 1024,
-    conversion_config={"precision": "int8", "workspace_gb": 2, "calibration_data": "calib/"},
+    conversion_config={"precision": "int8", "workspace_gb": 2, "calibration_data": "calib/", "optimization_level": 5, "avg_timing": 16},
     docker_timeout=900,
     success_markers=["Successful", "model.trt"],
 )

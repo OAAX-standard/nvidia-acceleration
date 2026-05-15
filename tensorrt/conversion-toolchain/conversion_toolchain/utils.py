@@ -23,8 +23,10 @@ Input zip layout
 config.json schema
 ------------------
   {
-      "precision":        "fp16",       // "fp32" | "fp16" | "int8"
-      "workspace_gb":     4,            // TRT builder workspace limit in GB
+      "precision":           "fp16",    // "fp32" | "fp16" | "int8"
+      "workspace_gb":        4,         // TRT builder workspace limit in GB
+      "optimization_level":  5,         // optional; trtexec --builderOptimizationLevel (1-5, default 3)
+      "avg_timing":          16,        // optional; trtexec --avgTiming (default 8)
       // --- int8 only ---
       "calibration_data": "calib/",     // directory inside the zip (images)
       "preprocessing": {                // optional; ImageNet defaults if omitted
@@ -263,6 +265,18 @@ def validate_config(config: dict):
         raise ValueError(
             f"workspace_gb must be a positive number, got '{config['workspace_gb']}'")
 
+    # --- optimization_level (optional) ---
+    if 'optimization_level' in config:
+        v = config['optimization_level']
+        if not isinstance(v, int) or not (1 <= v <= 5):
+            raise ValueError(f"optimization_level must be an integer 1-5, got '{v}'")
+
+    # --- avg_timing (optional) ---
+    if 'avg_timing' in config:
+        v = config['avg_timing']
+        if not isinstance(v, int) or v < 1:
+            raise ValueError(f"avg_timing must be a positive integer, got '{v}'")
+
     # --- int8-specific ---
     if config['precision'] == 'int8' and not config.get('calibration_data'):
         raise ValueError(
@@ -299,6 +313,12 @@ def run_trtexec(onnx_path: str, output_trt_path: str, config: dict, logs):
 
     if config['precision'] == 'fp16':
         cmd.append('--fp16')
+
+    if 'optimization_level' in config:
+        cmd.append(f'--builderOptimizationLevel={config["optimization_level"]}')
+
+    if 'avg_timing' in config:
+        cmd.append(f'--avgTiming={config["avg_timing"]}')
 
     logs.add_message('Running trtexec', {'command': ' '.join(cmd)})
 
