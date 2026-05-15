@@ -53,9 +53,11 @@ static string last_error_msg;
 static int log_level_val = spdlog::level::info;
 static string log_file_val = "runtime.log";
 
+struct OutputItem { int model_id; Tensors *tensors; };
+
 static nvinfer1::IRuntime *trt_runtime = nullptr;
 static vector<unique_ptr<ModelState>> model_states;
-static moodycamel::ConcurrentQueue<Tensors *> output_queue;
+static moodycamel::ConcurrentQueue<OutputItem> output_queue;
 
 shared_ptr<spdlog::logger> logger;
 
@@ -73,6 +75,11 @@ void TrtLogger::log(Severity sev, const char *msg) noexcept {
     case Severity::kINFO:    logger->info("[TRT] {}", msg);  break;
     case Severity::kVERBOSE: logger->trace("[TRT] {}", msg); break;
     }
+}
+
+static void drain_output_queue() {
+    OutputItem item;
+    while (output_queue.try_dequeue(item)) deep_free_tensors(item.tensors);
 }
 
 static void destroy_model_state(ModelState *ms) {
@@ -158,7 +165,7 @@ static void inference_thread_func(ModelState *ms)
                 host_out_bufs[i] = nullptr;
             }
 
-            if (!output_queue.try_enqueue(out)) {
+            if (!output_queue.try_enqueue({ms->model_id, out})) {
                 logger->error("Failed to enqueue output");
                 deep_free_tensors(out);
             }
@@ -209,7 +216,7 @@ extern "C" RuntimeStatus runtime_load_models(int num_models, const ModelConfig *
 
     for (auto &ms : model_states) destroy_model_state(ms.get());
     model_states.clear();
-    free_queue(output_queue);
+    drain_output_queue();
 
     try {
         for (int i = 0; i < num_models; ++i) {
@@ -282,8 +289,6 @@ extern "C" RuntimeStatus runtime_enqueue_input(int model_id, Tensors *input_tens
     if (model_id < 0 || (size_t)model_id >= model_states.size()) return RUNTIME_STATUS_INVALID_MODEL_ID;
     if (!input_tensors) return RUNTIME_STATUS_INVALID_ARGUMENT;
 
-    input_tensors->id = model_id;
-
     if (!model_states[(size_t)model_id]->input_queue.try_enqueue(input_tensors)) {
         set_error("Failed to enqueue input tensors");
         return RUNTIME_STATUS_ERROR;
@@ -296,17 +301,20 @@ extern "C" RuntimeStatus runtime_retrieve_output(int *model_id, Tensors **output
     if (!initialized) return RUNTIME_STATUS_NOT_INITIALIZED;
     if (!model_id || !output_tensors) return RUNTIME_STATUS_INVALID_ARGUMENT;
 
+    OutputItem item;
     if (timeout_ms == 0) {
-        if (!output_queue.try_dequeue(*output_tensors))
+        if (!output_queue.try_dequeue(item))
             return RUNTIME_STATUS_NO_OUTPUT_AVAILABLE;
-        *model_id = (*output_tensors)->id;
+        *model_id = item.model_id;
+        *output_tensors = item.tensors;
         return RUNTIME_STATUS_SUCCESS;
     }
 
     auto start = chrono::steady_clock::now();
     while (true) {
-        if (output_queue.try_dequeue(*output_tensors)) {
-            *model_id = (*output_tensors)->id;
+        if (output_queue.try_dequeue(item)) {
+            *model_id = item.model_id;
+            *output_tensors = item.tensors;
             return RUNTIME_STATUS_SUCCESS;
         }
         if (timeout_ms > 0) {
@@ -323,7 +331,7 @@ extern "C" RuntimeStatus runtime_cleanup(void)
 {
     for (auto &ms : model_states) destroy_model_state(ms.get());
     model_states.clear();
-    free_queue(output_queue);
+    drain_output_queue();
     if (trt_runtime) { delete trt_runtime; trt_runtime = nullptr; }
     initialized = false;
     last_error_msg.clear();
