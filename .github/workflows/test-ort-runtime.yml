@@ -13,9 +13,7 @@ on:
 
 jobs:
   test-ort:
-    # GitHub-hosted runner with an NVIDIA GPU.
-    # Adjust this label to match your organization's runner configuration.
-    runs-on: ubuntu-22.04-nvidia-t4
+    runs-on: nvidia-linux-x86_64
     timeout-minutes: 60
 
     steps:
