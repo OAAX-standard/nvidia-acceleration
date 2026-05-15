@@ -103,9 +103,10 @@ int main(int argc, char** argv) {
 
     std::cout << "[1] Initializing runtime..." << std::endl;
     std::string ll_str = std::to_string(log_level);
-    const char* keys[]   = {"log_level"};
-    const char* values[] = {ll_str.c_str()};
-    Config cfg{1, keys, values};
+    std::string mc_str = std::to_string(in_flight);
+    const char* keys[]   = {"log_level", "max_concurrent"};
+    const char* values[] = {ll_str.c_str(), mc_str.c_str()};
+    Config cfg{2, keys, values};
     CHECK(runtime_init(cfg) == RUNTIME_STATUS_SUCCESS, "runtime_init failed");
     std::cout << "  " << runtime_get_name() << " v" << runtime_get_version() << std::endl;
 

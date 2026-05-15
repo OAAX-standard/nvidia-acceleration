@@ -24,7 +24,7 @@ public:
 };
 static TrtLogger trt_logger;
 
-// Per-tensor info for one model
+// Per-tensor info (one copy per inference slot)
 struct TensorInfo {
     string name;
     bool is_input;
@@ -34,24 +34,31 @@ struct TensorInfo {
     void *gpu_buf = nullptr;
 };
 
-// Per-model runtime state
-struct ModelState {
-    int model_id;
-    nvinfer1::ICudaEngine *engine = nullptr;
-    nvinfer1::IExecutionContext *context = nullptr;
+// One independent inference slot: own context, stream, and GPU buffers.
+// Multiple slots on the same engine run concurrently on separate CUDA streams.
+struct InferSlot {
+    nvinfer1::IExecutionContext *ctx = nullptr;
     cudaStream_t stream = nullptr;
     vector<TensorInfo> tensor_infos;
     vector<size_t> input_indices;
     vector<size_t> output_indices;
-    moodycamel::ConcurrentQueue<Tensors *> input_queue;
-    thread inference_thread;
+};
+
+// Per-model runtime state
+struct ModelState {
+    int model_id;
+    nvinfer1::ICudaEngine *engine = nullptr;
+    vector<InferSlot> slots;
+    vector<thread> worker_threads;
     atomic<bool> stop{false};
+    moodycamel::ConcurrentQueue<Tensors *> input_queue;
 };
 
 static bool initialized = false;
 static string last_error_msg;
 static int log_level_val = spdlog::level::info;
 static string log_file_val = "runtime.log";
+static int max_concurrent = 1;
 
 struct OutputItem { int model_id; Tensors *tensors; };
 
@@ -85,81 +92,83 @@ static void drain_output_queue() {
 static void destroy_model_state(ModelState *ms) {
     if (!ms) return;
     ms->stop = true;
-    if (ms->inference_thread.joinable()) ms->inference_thread.join();
+    for (auto &t : ms->worker_threads)
+        if (t.joinable()) t.join();
     free_queue(ms->input_queue);
-    for (auto &ti : ms->tensor_infos)
-        if (ti.gpu_buf) { cudaFree(ti.gpu_buf); ti.gpu_buf = nullptr; }
-    if (ms->stream)  { cudaStreamDestroy(ms->stream); ms->stream = nullptr; }
-    if (ms->context) { delete ms->context; ms->context = nullptr; }
-    if (ms->engine)  { delete ms->engine;  ms->engine  = nullptr; }
+    for (auto &slot : ms->slots) {
+        for (auto &ti : slot.tensor_infos)
+            if (ti.gpu_buf) { cudaFree(ti.gpu_buf); ti.gpu_buf = nullptr; }
+        if (slot.stream)  { cudaStreamDestroy(slot.stream); slot.stream = nullptr; }
+        if (slot.ctx)     { delete slot.ctx; slot.ctx = nullptr; }
+    }
+    if (ms->engine) { delete ms->engine; ms->engine = nullptr; }
 }
 
-static void inference_thread_func(ModelState *ms)
+static void worker_func(ModelState *ms, int slot_idx)
 {
+    InferSlot &slot = ms->slots[(size_t)slot_idx];
+
     while (!ms->stop) {
         Tensors *input = nullptr;
         if (!ms->input_queue.try_dequeue(input)) {
-            this_thread::sleep_for(chrono::milliseconds(5));
+            this_thread::sleep_for(chrono::milliseconds(1));
             continue;
         }
-        logger->debug("Model {}: dequeued input id={}", ms->model_id, input->id);
+        logger->debug("Model {} slot {}: dequeued input id={}", ms->model_id, slot_idx, input->id);
 
-        vector<void *> host_out_bufs(ms->output_indices.size(), nullptr);
+        vector<void *> host_out_bufs(slot.output_indices.size(), nullptr);
         int req_id = input->id;
 
         try {
-            if ((size_t)input->num_tensors != ms->input_indices.size())
+            if ((size_t)input->num_tensors != slot.input_indices.size())
                 throw runtime_error("Input tensor count mismatch");
 
-            for (size_t i = 0; i < ms->output_indices.size(); ++i) {
-                host_out_bufs[i] = malloc(ms->tensor_infos[ms->output_indices[i]].byte_size);
+            for (size_t i = 0; i < slot.output_indices.size(); ++i) {
+                host_out_bufs[i] = malloc(slot.tensor_infos[slot.output_indices[i]].byte_size);
                 if (!host_out_bufs[i]) throw runtime_error("malloc failed for output buffer");
             }
 
-            for (size_t i = 0; i < ms->input_indices.size(); ++i) {
-                TensorInfo &ti = ms->tensor_infos[ms->input_indices[i]];
+            for (size_t i = 0; i < slot.input_indices.size(); ++i) {
+                TensorInfo &ti = slot.tensor_infos[slot.input_indices[i]];
                 if (cudaMemcpyAsync(ti.gpu_buf, input->tensors[i].data, ti.byte_size,
-                                    cudaMemcpyHostToDevice, ms->stream) != cudaSuccess)
+                                    cudaMemcpyHostToDevice, slot.stream) != cudaSuccess)
                     throw runtime_error("cudaMemcpyAsync H2D failed");
             }
 
-            for (auto &ti : ms->tensor_infos)
-                ms->context->setTensorAddress(ti.name.c_str(), ti.gpu_buf);
+            for (auto &ti : slot.tensor_infos)
+                slot.ctx->setTensorAddress(ti.name.c_str(), ti.gpu_buf);
 
-            if (!ms->context->enqueueV3(ms->stream))
+            if (!slot.ctx->enqueueV3(slot.stream))
                 throw runtime_error("TRT enqueueV3 failed");
 
-            for (size_t i = 0; i < ms->output_indices.size(); ++i) {
-                TensorInfo &ti = ms->tensor_infos[ms->output_indices[i]];
+            for (size_t i = 0; i < slot.output_indices.size(); ++i) {
+                TensorInfo &ti = slot.tensor_infos[slot.output_indices[i]];
                 if (cudaMemcpyAsync(host_out_bufs[i], ti.gpu_buf, ti.byte_size,
-                                    cudaMemcpyDeviceToHost, ms->stream) != cudaSuccess)
+                                    cudaMemcpyDeviceToHost, slot.stream) != cudaSuccess)
                     throw runtime_error("cudaMemcpyAsync D2H failed");
             }
 
-            if (cudaStreamSynchronize(ms->stream) != cudaSuccess)
+            if (cudaStreamSynchronize(slot.stream) != cudaSuccess)
                 throw runtime_error("cudaStreamSynchronize failed");
 
             deep_free_tensors(input);
             input = nullptr;
 
-            size_t n_out = ms->output_indices.size();
+            size_t n_out = slot.output_indices.size();
             Tensors *out = (Tensors *)malloc(sizeof(Tensors));
             out->id = req_id;
             out->num_tensors = (int)n_out;
             out->tensors = (TensorDescriptor *)malloc(n_out * sizeof(TensorDescriptor));
 
             for (size_t i = 0; i < n_out; ++i) {
-                TensorInfo &ti = ms->tensor_infos[ms->output_indices[i]];
+                TensorInfo &ti = slot.tensor_infos[slot.output_indices[i]];
                 TensorDescriptor &td = out->tensors[i];
-
                 td.name = strdup(ti.name.c_str());
-
                 td.data_type = map_trt_to_oaax_type(ti.dtype);
                 td.rank = ti.dims.nbDims;
                 td.shape = (int *)malloc(td.rank * sizeof(int));
                 for (int d = 0; d < td.rank; ++d)
                     td.shape[d] = (int)ti.dims.d[d];
-
                 td.data_size = ti.byte_size;
                 td.data = host_out_bufs[i];
                 host_out_bufs[i] = nullptr;
@@ -172,7 +181,7 @@ static void inference_thread_func(ModelState *ms)
         } catch (const exception &e) {
             if (input) deep_free_tensors(input);
             for (void *buf : host_out_bufs) free(buf);
-            logger->error("Inference error: {}", e.what());
+            logger->error("Inference error (slot {}): {}", slot_idx, e.what());
         }
     }
 }
@@ -192,6 +201,9 @@ extern "C" RuntimeStatus runtime_init(Config config)
             log_level_val = (v >= spdlog::level::trace && v <= spdlog::level::off) ? v : spdlog::level::info;
         } else if (key == "log_file") {
             log_file_val = val;
+        } else if (key == "max_concurrent") {
+            int v = stoi(val);
+            max_concurrent = max(1, min(32, v));
         }
     }
 
@@ -201,7 +213,7 @@ extern "C" RuntimeStatus runtime_init(Config config)
         trt_runtime = nvinfer1::createInferRuntime(trt_logger);
         if (!trt_runtime) throw runtime_error("Failed to create TRT IRuntime");
         initialized = true;
-        logger->info("Runtime initialized (log_level={})", log_level_val);
+        logger->info("Runtime initialized (log_level={}, max_concurrent={})", log_level_val, max_concurrent);
         return RUNTIME_STATUS_SUCCESS;
     } catch (const exception &e) {
         set_error(string("runtime_init failed: ") + e.what());
@@ -224,6 +236,7 @@ extern "C" RuntimeStatus runtime_load_models(int num_models, const ModelConfig *
             auto ms = make_unique<ModelState>();
             ms->model_id = i;
 
+            // Deserialize engine
             vector<char> engine_data;
             if (mc.file_path) {
                 ifstream file(mc.file_path, ios::binary | ios::ate);
@@ -248,30 +261,44 @@ extern "C" RuntimeStatus runtime_load_models(int num_models, const ModelConfig *
             }
 
             if (!ms->engine) throw runtime_error("Failed to deserialize TRT engine");
-            ms->context = ms->engine->createExecutionContext();
-            if (!ms->context) throw runtime_error("Failed to create execution context");
-            if (cudaStreamCreate(&ms->stream) != cudaSuccess) throw runtime_error("cudaStreamCreate failed");
 
+            // Create one inference slot per concurrent worker
             int nb = ms->engine->getNbIOTensors();
-            ms->tensor_infos.resize((size_t)nb);
-            for (int j = 0; j < nb; ++j) {
-                const char *name = ms->engine->getIOTensorName(j);
-                TensorInfo &ti = ms->tensor_infos[(size_t)j];
-                ti.name = name;
-                ti.is_input = (ms->engine->getTensorIOMode(name) == nvinfer1::TensorIOMode::kINPUT);
-                ti.dims = ms->engine->getTensorShape(name);
-                ti.dtype = ms->engine->getTensorDataType(name);
-                ti.byte_size = compute_tensor_byte_size(ti.dims, ti.dtype);
-                if (cudaMalloc(&ti.gpu_buf, ti.byte_size) != cudaSuccess)
-                    throw runtime_error(string("cudaMalloc failed for tensor: ") + name);
-                if (ti.is_input)
-                    ms->input_indices.push_back((size_t)j);
-                else
-                    ms->output_indices.push_back((size_t)j);
+            for (int s = 0; s < max_concurrent; ++s) {
+                InferSlot slot;
+                slot.ctx = ms->engine->createExecutionContext();
+                if (!slot.ctx) throw runtime_error("Failed to create execution context");
+                if (cudaStreamCreate(&slot.stream) != cudaSuccess)
+                    throw runtime_error("cudaStreamCreate failed");
+
+                slot.tensor_infos.resize((size_t)nb);
+                for (int j = 0; j < nb; ++j) {
+                    const char *name = ms->engine->getIOTensorName(j);
+                    TensorInfo &ti = slot.tensor_infos[(size_t)j];
+                    ti.name = name;
+                    ti.is_input = (ms->engine->getTensorIOMode(name) == nvinfer1::TensorIOMode::kINPUT);
+                    ti.dims = ms->engine->getTensorShape(name);
+                    ti.dtype = ms->engine->getTensorDataType(name);
+                    ti.byte_size = compute_tensor_byte_size(ti.dims, ti.dtype);
+                    if (cudaMalloc(&ti.gpu_buf, ti.byte_size) != cudaSuccess)
+                        throw runtime_error(string("cudaMalloc failed for tensor: ") + name);
+                    if (ti.is_input)
+                        slot.input_indices.push_back((size_t)j);
+                    else
+                        slot.output_indices.push_back((size_t)j);
+                }
+                ms->slots.push_back(move(slot));
             }
 
-            logger->info("Model {}: {} inputs, {} outputs", i, ms->input_indices.size(), ms->output_indices.size());
-            ms->inference_thread = thread(inference_thread_func, ms.get());
+            logger->info("Model {}: {} inputs, {} outputs, {} concurrent slots",
+                         i,
+                         ms->slots[0].input_indices.size(),
+                         ms->slots[0].output_indices.size(),
+                         max_concurrent);
+
+            for (int s = 0; s < max_concurrent; ++s)
+                ms->worker_threads.emplace_back(worker_func, ms.get(), s);
+
             model_states.push_back(move(ms));
         }
         return RUNTIME_STATUS_SUCCESS;
@@ -334,6 +361,7 @@ extern "C" RuntimeStatus runtime_cleanup(void)
     drain_output_queue();
     if (trt_runtime) { delete trt_runtime; trt_runtime = nullptr; }
     initialized = false;
+    max_concurrent = 1;
     last_error_msg.clear();
     if (logger) {
         logger->info("Runtime cleaned up");
@@ -362,8 +390,10 @@ extern "C" const char *runtime_get_info(void)
 {
     if (!initialized) return nullptr;
     static char buf[256];
+    size_t total_slots = 0;
+    for (auto &ms : model_states) total_slots += ms->slots.size();
     snprintf(buf, sizeof(buf),
-             "{\"loaded_models\":%zu,\"requests_in_flight\":%zu}",
-             model_states.size(), output_queue.size_approx());
+             "{\"loaded_models\":%zu,\"total_slots\":%zu,\"requests_in_flight\":%zu}",
+             model_states.size(), total_slots, output_queue.size_approx());
     return buf;
 }
