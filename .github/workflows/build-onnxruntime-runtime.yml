@@ -89,7 +89,7 @@ jobs:
             cuda=$(echo "$name" | cut -d- -f4 | cut -d_ -f2)  # 12
             case "$platform" in
               X86_64)       arch="x86_64" ;;
-              AARCH64)      arch="aarch64" ;;
+              AARCH64)      arch="aarch64-jetson" ;;
               AARCH64_SBSA) arch="aarch64-sbsa" ;;
             esac
             s3cmd put "$archive" \
