@@ -644,11 +644,16 @@ else()
         )
 endif()
 
-# Set custom output directories for the built target
+# Set custom output directories for the built target.
+# INSTALL_RPATH "$ORIGIN" tells the dynamic linker to search the directory
+# where libRuntimeLibrary.so lives for its dependencies (libonnxruntime.so,
+# libonnxruntime_providers_cuda.so, libonnxruntime_providers_shared.so).
 set_target_properties(RuntimeLibrary PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
         LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
         ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+        INSTALL_RPATH             "$ORIGIN"
+        BUILD_WITH_INSTALL_RPATH  TRUE
 )
 
 # == Copy Windows runtime libraries == #
