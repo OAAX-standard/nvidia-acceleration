@@ -58,7 +58,7 @@ if [[ "$PLATFORM" == "X86_64" && "$CUDA_VERSION" == "13" || "$ALL" == "1" ]]; th
     build_runtime "X86_64" "13"
 fi
 
-# AARCH64 builds
+# AARCH64 builds (Jetson and other embedded aarch64 devices)
 if [[ "$PLATFORM" == "AARCH64" && "$CUDA_VERSION" == "11" || "$ALL" == "1" ]]; then
     build_runtime "AARCH64" "11"
 fi
@@ -67,4 +67,9 @@ if [[ "$PLATFORM" == "AARCH64" && "$CUDA_VERSION" == "12" || "$ALL" == "1" ]]; t
 fi
 if [[ "$PLATFORM" == "AARCH64" && "$CUDA_VERSION" == "13" || "$ALL" == "1" ]]; then
     build_runtime "AARCH64" "13"
+fi
+
+# AARCH64_SBSA builds (aarch64 server machines, e.g. NVIDIA DGX Spark with Grace CPU + Blackwell GPU)
+if [[ "$PLATFORM" == "AARCH64_SBSA" && "$CUDA_VERSION" == "13" || "$ALL" == "1" ]]; then
+    build_runtime "AARCH64_SBSA" "13"
 fi
