@@ -179,10 +179,15 @@ target_link_directories(RuntimeLibrary PUBLIC
     ${CUDA_LIB_DIR})
 
 # === Link Libraries ===
+# nvinfer_plugin was merged into nvinfer in TRT 10.x; link it only when present.
+if(EXISTS "${TRT_LIB_DIR}/libnvinfer_plugin.so")
+    set(TRT_PLUGIN_LIB nvinfer_plugin)
+endif()
+
 target_link_libraries(RuntimeLibrary PUBLIC
     -Wl,--start-group
     nvinfer
-    nvinfer_plugin
+    ${TRT_PLUGIN_LIB}
     cudart
     spdlog::spdlog
     stdc++
@@ -211,10 +216,15 @@ if(PLATFORM STREQUAL "AARCH64_JETSON")
         COMMENT "Bundling CUDA libs into bin/ (TRT provided by JetPack on target)"
     )
 else()
+    if(DEFINED TRT_PLUGIN_LIB)
+        set(COPY_PLUGIN_CMD "cp -P ${TRT_LIB_DIR}/libnvinfer_plugin.so* $<TARGET_FILE_DIR:RuntimeLibrary>/ &&")
+    else()
+        set(COPY_PLUGIN_CMD "")
+    endif()
     add_custom_command(TARGET RuntimeLibrary POST_BUILD
         COMMAND bash -c
-            "cp -P ${TRT_LIB_DIR}/libnvinfer.so* \
-                   ${TRT_LIB_DIR}/libnvinfer_plugin.so* \
+            "${COPY_PLUGIN_CMD} \
+             cp -P ${TRT_LIB_DIR}/libnvinfer.so* \
                    ${CUDA_LIB_DIR}/libcudart.so* \
                    $<TARGET_FILE_DIR:RuntimeLibrary>/"
         COMMENT "Bundling TRT and CUDA libs into bin/"
