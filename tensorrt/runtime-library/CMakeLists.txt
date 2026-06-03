@@ -210,23 +210,18 @@ set_target_properties(RuntimeLibrary PROPERTIES
 # Only bundle libcudart for aarch64 cross-builds.
 if(PLATFORM STREQUAL "AARCH64_JETSON")
     add_custom_command(TARGET RuntimeLibrary POST_BUILD
-        COMMAND bash -c
-            "cp -P ${CUDA_LIB_DIR}/libcudart.so* \
-                   $<TARGET_FILE_DIR:RuntimeLibrary>/"
+        COMMAND bash -c "cp -P ${CUDA_LIB_DIR}/libcudart.so* $<TARGET_FILE_DIR:RuntimeLibrary>/"
         COMMENT "Bundling CUDA libs into bin/ (TRT provided by JetPack on target)"
     )
-else()
-    if(DEFINED TRT_PLUGIN_LIB)
-        set(COPY_PLUGIN_CMD "cp -P ${TRT_LIB_DIR}/libnvinfer_plugin.so* $<TARGET_FILE_DIR:RuntimeLibrary>/ &&")
-    else()
-        set(COPY_PLUGIN_CMD "")
-    endif()
+elseif(DEFINED TRT_PLUGIN_LIB)
+    # nvinfer_plugin ships separately in some TRT releases; include it when present.
     add_custom_command(TARGET RuntimeLibrary POST_BUILD
-        COMMAND bash -c
-            "${COPY_PLUGIN_CMD} \
-             cp -P ${TRT_LIB_DIR}/libnvinfer.so* \
-                   ${CUDA_LIB_DIR}/libcudart.so* \
-                   $<TARGET_FILE_DIR:RuntimeLibrary>/"
+        COMMAND bash -c "cp -P ${TRT_LIB_DIR}/libnvinfer_plugin.so* ${TRT_LIB_DIR}/libnvinfer.so* ${CUDA_LIB_DIR}/libcudart.so* $<TARGET_FILE_DIR:RuntimeLibrary>/"
+        COMMENT "Bundling TRT and CUDA libs into bin/"
+    )
+else()
+    add_custom_command(TARGET RuntimeLibrary POST_BUILD
+        COMMAND bash -c "cp -P ${TRT_LIB_DIR}/libnvinfer.so* ${CUDA_LIB_DIR}/libcudart.so* $<TARGET_FILE_DIR:RuntimeLibrary>/"
         COMMENT "Bundling TRT and CUDA libs into bin/"
     )
 endif()
