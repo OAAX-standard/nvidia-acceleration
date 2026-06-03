@@ -29,7 +29,7 @@ jobs:
         run: |
           export DEBIAN_FRONTEND=noninteractive
           apt-get update
-          apt-get install -y git git-lfs wget curl build-essential python3 xz-utils s3cmd tree sudo
+          apt-get install -y git git-lfs wget curl build-essential python3 xz-utils zstd s3cmd tree sudo
           git lfs install
 
       - name: Checkout
@@ -71,8 +71,8 @@ jobs:
       - name: Upload runtimes to S3
         run: |
           version=${{ env.version }}
-          find tensorrt/runtime-library/build/NVIDIA_TENSORRT -name "library-cuda_*.tar.gz" | while read -r archive; do
-            # archive path: tensorrt/runtime-library/build/NVIDIA_TENSORRT/<arch>/Ubuntu/<ubuntu_version>/library-cuda_<N>.tar.gz
+          find tensorrt/runtime-library/build/NVIDIA_TENSORRT -name "library-trt*-cuda_*.tar.gz" | while read -r archive; do
+            # archive path: tensorrt/runtime-library/build/NVIDIA_TENSORRT/<arch>/Ubuntu/<ubuntu_version>/library-trt<N>-cuda_<M>.tar.gz
             rel="${archive#tensorrt/runtime-library/build/NVIDIA_TENSORRT/}"
             s3cmd put "$archive" "s3://oaax/runtimes/${version}/NVIDIA_TRT/${rel}"
           done

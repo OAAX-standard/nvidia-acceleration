@@ -10,7 +10,7 @@ def cli():
     import os
     import platform
     import tempfile
-    from .utils import unzip_input, validate_config, check_nvidia_dependencies, detect_gpu_architecture, run_trtexec, build_int8_engine, md5_hash, build_mime_type
+    from .utils import unzip_input, validate_config, check_nvidia_dependencies, detect_gpu_architecture, run_trtexec, build_fp16_engine, build_int8_engine, build_int8_engine_trt11, md5_hash, build_mime_type
     from .logger import Logs
 
     logs = Logs()
@@ -32,7 +32,7 @@ def cli():
         validate_config(config)
         logs.add_message('Config validated', config)
 
-        check_nvidia_dependencies(config['precision'])
+        trt_major = check_nvidia_dependencies(config['precision'])
 
         output_trt_path = os.path.join(args.output_dir, 'model.trt')
 
@@ -42,7 +42,12 @@ def cli():
                 raise FileNotFoundError(
                     f"Calibration directory '{config['calibration_data']}' "
                     f"not found in zip archive")
-            build_int8_engine(onnx_path, output_trt_path, calib_dir, config, logs)
+            if trt_major is not None and trt_major >= 11:
+                build_int8_engine_trt11(onnx_path, output_trt_path, calib_dir, config, logs)
+            else:
+                build_int8_engine(onnx_path, output_trt_path, calib_dir, config, logs)
+        elif config['precision'] == 'fp16' and trt_major is not None and trt_major >= 11:
+            build_fp16_engine(onnx_path, output_trt_path, config, logs)
         else:
             run_trtexec(onnx_path, output_trt_path, config, logs)
 
