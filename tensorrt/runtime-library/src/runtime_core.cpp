@@ -2,6 +2,8 @@
 #include <chrono>
 #include <cstring>
 #include <fstream>
+#include <map>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -59,6 +61,7 @@ static string last_error_msg;
 static int log_level_val = spdlog::level::info;
 static string log_file_val = "runtime.log";
 static int max_concurrent = 1;
+static string perf_mode_val;
 
 struct OutputItem { int model_id; Tensors *tensors; };
 
@@ -118,6 +121,7 @@ static void worker_func(ModelState *ms, int slot_idx)
 
         vector<void *> host_out_bufs(slot.output_indices.size(), nullptr);
         int req_id = input->id;
+        auto t_start = chrono::steady_clock::now();
 
         try {
             if ((size_t)input->num_tensors != slot.input_indices.size())
@@ -174,6 +178,11 @@ static void worker_func(ModelState *ms, int slot_idx)
                 host_out_bufs[i] = nullptr;
             }
 
+            auto elapsed_ms = chrono::duration_cast<chrono::microseconds>(
+                chrono::steady_clock::now() - t_start).count() / 1000.0;
+            logger->debug("Model {} slot {}: inference id={} done in {:.2f}ms",
+                          ms->model_id, slot_idx, req_id, elapsed_ms);
+
             if (!output_queue.try_enqueue({ms->model_id, out})) {
                 logger->error("Failed to enqueue output");
                 deep_free_tensors(out);
@@ -193,23 +202,54 @@ extern "C" RuntimeStatus runtime_init(Config config)
         return RUNTIME_STATUS_ALREADY_INITIALIZED;
     }
 
-    for (int i = 0; i < config.length; ++i) {
-        string key = config.keys[i];
-        string val = config.values[i];
-        if (key == "log_level") {
-            int v = stoi(val);
-            log_level_val = (v >= spdlog::level::trace && v <= spdlog::level::off) ? v : spdlog::level::info;
-        } else if (key == "log_file") {
-            log_file_val = val;
-        } else if (key == "max_concurrent") {
-            int v = stoi(val);
-            max_concurrent = max(1, min(32, v));
-        }
+    // Collect all config into a map for ordered application
+    map<string, string> cfg;
+    for (int i = 0; i < config.length; ++i)
+        cfg[string(config.keys[i])] = string(config.values[i]);
+
+    // Phase 1: extract log settings before logger init
+    if (cfg.count("log_level")) {
+        int v = stoi(cfg["log_level"]);
+        log_level_val = (v >= spdlog::level::trace && v <= spdlog::level::off) ? v : spdlog::level::info;
     }
+    if (cfg.count("log_file"))
+        log_file_val = cfg["log_file"];
+    bool log_stdout = cfg.count("log_stdout") && cfg["log_stdout"] == "true";
 
     try {
-        logger = initialize_logger(log_file_val, log_level_val, log_level_val, runtime_get_name());
+        logger = initialize_logger(log_file_val, log_level_val, log_level_val, runtime_get_name(), log_stdout);
         logger->info("Initializing TensorRT runtime");
+
+        // Detect hardware
+        HwProfile hw = detect_hardware();
+        logger->info("Hardware: {} CPU cores, {} GPU SMs, {:.1f} GB GPU memory",
+                     hw.cpu_cores, hw.gpu_sm_count, hw.gpu_total_mem / 1e9);
+
+        // Phase 2: apply perf_mode (sets defaults based on hardware)
+        if (cfg.count("perf_mode")) {
+            perf_mode_val = cfg["perf_mode"];
+            if (perf_mode_val != "power" && perf_mode_val != "eco") {
+                logger->warn("Unknown perf_mode '{}', ignoring", perf_mode_val);
+                perf_mode_val.clear();
+            } else {
+                int base = hw.gpu_sm_count > 0
+                    ? max(2, min(16, hw.gpu_sm_count / 8))
+                    : min(hw.cpu_cores, 4);
+                max_concurrent = (perf_mode_val == "power") ? base : max(1, base / 2);
+                logger->info("perf_mode={}: max_concurrent={} (auto from {} SMs, {} cores)",
+                             perf_mode_val, max_concurrent, hw.gpu_sm_count, hw.cpu_cores);
+            }
+        }
+
+        // Phase 3: explicit keys override perf_mode
+        if (cfg.count("max_concurrent"))
+            max_concurrent = max(1, min(32, stoi(cfg["max_concurrent"])));
+
+        // Warn on unknown keys
+        static const set<string> known = {"log_level", "log_file", "log_stdout", "perf_mode", "max_concurrent"};
+        for (auto &[k, v] : cfg)
+            if (!known.count(k)) logger->warn("Unknown config key ignored: '{}'", k);
+
         trt_runtime = nvinfer1::createInferRuntime(trt_logger);
         if (!trt_runtime) throw runtime_error("Failed to create TRT IRuntime");
         initialized = true;
@@ -295,6 +335,15 @@ extern "C" RuntimeStatus runtime_load_models(int num_models, const ModelConfig *
                          ms->slots[0].input_indices.size(),
                          ms->slots[0].output_indices.size(),
                          max_concurrent);
+            for (const auto &ti : ms->slots[0].tensor_infos) {
+                string shape_str;
+                for (int d = 0; d < ti.dims.nbDims; ++d) {
+                    if (d) shape_str += "x";
+                    shape_str += to_string(ti.dims.d[d]);
+                }
+                logger->debug("  {} [{}] shape={}", ti.is_input ? "input " : "output",
+                              ti.name, shape_str);
+            }
 
             for (int s = 0; s < max_concurrent; ++s)
                 ms->worker_threads.emplace_back(worker_func, ms.get(), s);
@@ -362,6 +411,7 @@ extern "C" RuntimeStatus runtime_cleanup(void)
     if (trt_runtime) { delete trt_runtime; trt_runtime = nullptr; }
     initialized = false;
     max_concurrent = 1;
+    perf_mode_val.clear();
     last_error_msg.clear();
     if (logger) {
         logger->info("Runtime cleaned up");

@@ -1,7 +1,9 @@
 #include <iostream>
 #include <stdexcept>
+#include <thread>
 
 #include "runtime_utils.hpp"
+#include <cuda_runtime.h>
 #include <spdlog/async.h>
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
@@ -70,22 +72,30 @@ size_t compute_tensor_byte_size(const nvinfer1::Dims &dims, nvinfer1::DataType d
 shared_ptr<spdlog::logger> initialize_logger(const string &log_file,
                                               int file_level,
                                               int console_level,
-                                              const string prefix)
+                                              const string prefix,
+                                              bool log_stdout)
 {
     try {
-        auto console_sink = make_shared<spdlog::sinks::stdout_color_sink_mt>();
-        console_sink->set_level(static_cast<spdlog::level::level_enum>(console_level));
-
         auto file_sink = make_shared<spdlog::sinks::rotating_file_sink_st>(
             log_file, 1024 * 1024 * 5, 3);
         file_sink->set_level(static_cast<spdlog::level::level_enum>(file_level));
 
+        spdlog::sinks_init_list sinks;
+        shared_ptr<spdlog::sinks::stdout_color_sink_mt> console_sink;
+        if (log_stdout) {
+            console_sink = make_shared<spdlog::sinks::stdout_color_sink_mt>();
+            console_sink->set_level(static_cast<spdlog::level::level_enum>(console_level));
+            sinks = {console_sink, file_sink};
+        } else {
+            sinks = {file_sink};
+        }
+
         static auto thread_pool = make_shared<spdlog::details::thread_pool>(8192, 1);
         auto logger = make_shared<spdlog::async_logger>(
-            prefix, spdlog::sinks_init_list{console_sink, file_sink},
+            prefix, sinks,
             thread_pool, spdlog::async_overflow_policy::overrun_oldest);
 
-        spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [" + prefix + "] [%^%l%$] %v");
+        logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%n] [%^%l%$] %v");
         logger->set_level(static_cast<spdlog::level::level_enum>(min(file_level, console_level)));
         logger->flush_on(spdlog::level::info);
         return logger;
@@ -101,4 +111,17 @@ void destroy_logger(shared_ptr<spdlog::logger> logger)
         logger->flush();
         spdlog::drop(logger->name());
     }
+}
+
+HwProfile detect_hardware()
+{
+    HwProfile hw{};
+    hw.cpu_cores = (int)thread::hardware_concurrency();
+    if (hw.cpu_cores <= 0) hw.cpu_cores = 1;
+    cudaDeviceProp props{};
+    if (cudaGetDeviceProperties(&props, 0) == cudaSuccess) {
+        hw.gpu_sm_count = props.multiProcessorCount;
+        hw.gpu_total_mem = props.totalGlobalMem;
+    }
+    return hw;
 }

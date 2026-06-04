@@ -18,7 +18,15 @@ void free_queue(moodycamel::ConcurrentQueue<Tensors *> &queue);
 shared_ptr<spdlog::logger> initialize_logger(const string &log_file,
                                               int file_level,
                                               int console_level,
-                                              const string prefix);
+                                              const string prefix,
+                                              bool log_stdout = false);
 void destroy_logger(shared_ptr<spdlog::logger> logger);
+
+struct HwProfile {
+    int cpu_cores;
+    int gpu_sm_count;
+    size_t gpu_total_mem;
+};
+HwProfile detect_hardware();
 
 #endif // RUNTIME_UTILS_HPP

@@ -1,5 +1,7 @@
 #include <atomic>
 #include <chrono>
+#include <map>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -44,6 +46,9 @@ static moodycamel::ConcurrentQueue<OutputItem> output_queue;
 static int log_level = spdlog::level::info;
 static string log_file = "runtime.log";
 static int num_threads = 4;
+static int inter_op_threads = 0;        // 0 = ORT default
+static size_t gpu_mem_limit = SIZE_MAX;
+static string perf_mode_val;
 
 static shared_ptr<spdlog::logger> logger;
 
@@ -76,6 +81,7 @@ static void inference_thread_func(ModelState *ms)
             continue;
         }
         logger->debug("Model {}: dequeued input id={}", ms->model_id, input->id);
+        auto t_start = chrono::steady_clock::now();
 
         try {
             vector<string> input_name_strs;
@@ -130,6 +136,10 @@ static void inference_thread_func(ModelState *ms)
                 memcpy(td.data, ort_outputs[i].GetTensorMutableData<void>(), td.data_size);
             }
 
+            auto elapsed_ms = chrono::duration_cast<chrono::microseconds>(
+                chrono::steady_clock::now() - t_start).count() / 1000.0;
+            logger->debug("Model {}: inference id={} done in {:.2f}ms", ms->model_id, req_id, elapsed_ms);
+
             if (!output_queue.try_enqueue({ms->model_id, out})) {
                 logger->error("Failed to enqueue output");
                 deep_free_tensors(out);
@@ -148,35 +158,82 @@ extern "C" RuntimeStatus runtime_init(Config config)
         return RUNTIME_STATUS_ALREADY_INITIALIZED;
     }
 
-    for (int i = 0; i < config.length; ++i) {
-        string key = config.keys[i];
-        string val = config.values[i];
-        if (key == "log_level") {
-            int v = stoi(val);
-            log_level = (v >= spdlog::level::trace && v <= spdlog::level::off) ? v : spdlog::level::info;
-        } else if (key == "log_file") {
-            log_file = val;
-        } else if (key == "num_threads") {
-            num_threads = max(1, min(8, stoi(val)));
-        }
+    // Collect all config into a map for ordered application
+    map<string, string> cfg;
+    for (int i = 0; i < config.length; ++i)
+        cfg[string(config.keys[i])] = string(config.values[i]);
+
+    // Phase 1: extract log settings before logger init
+    if (cfg.count("log_level")) {
+        int v = stoi(cfg["log_level"]);
+        log_level = (v >= spdlog::level::trace && v <= spdlog::level::off) ? v : spdlog::level::info;
     }
+    if (cfg.count("log_file"))
+        log_file = cfg["log_file"];
+    bool log_stdout = cfg.count("log_stdout") && cfg["log_stdout"] == "true";
 
     try {
-        logger = initialize_logger(log_file, log_level, log_level, runtime_get_name());
+        logger = initialize_logger(log_file, log_level, log_level, runtime_get_name(), log_stdout);
         logger->info("Initializing ORT runtime");
+
+        // Detect hardware
+        HwProfile hw = detect_hardware();
+        logger->info("Hardware: {} CPU cores, {} GPU SMs, {:.1f} GB GPU memory",
+                     hw.cpu_cores, hw.gpu_sm_count, hw.gpu_total_mem / 1e9);
+
+        // Phase 2: apply perf_mode (sets defaults based on hardware)
+        if (cfg.count("perf_mode")) {
+            perf_mode_val = cfg["perf_mode"];
+            if (perf_mode_val != "power" && perf_mode_val != "eco") {
+                logger->warn("Unknown perf_mode '{}', ignoring", perf_mode_val);
+                perf_mode_val.clear();
+            } else {
+                if (perf_mode_val == "power") {
+                    num_threads = hw.cpu_cores;
+                    inter_op_threads = hw.cpu_cores;
+                    gpu_mem_limit = SIZE_MAX;
+                } else { // eco
+                    num_threads = max(1, hw.cpu_cores / 2);
+                    inter_op_threads = max(1, hw.cpu_cores / 2);
+                    gpu_mem_limit = hw.gpu_total_mem > 0 ? hw.gpu_total_mem / 2 : SIZE_MAX;
+                }
+                logger->info("perf_mode={}: num_threads={}, inter_op_threads={}, gpu_mem_limit={:.1f} GB (auto)",
+                             perf_mode_val, num_threads, inter_op_threads, gpu_mem_limit / 1e9);
+            }
+        }
+
+        // Phase 3: explicit keys override perf_mode
+        if (cfg.count("num_threads"))
+            num_threads = max(1, min(512, stoi(cfg["num_threads"])));
+        if (cfg.count("inter_op_threads"))
+            inter_op_threads = max(0, min(512, stoi(cfg["inter_op_threads"])));
+        if (cfg.count("gpu_mem_limit"))
+            gpu_mem_limit = (size_t)stoull(cfg["gpu_mem_limit"]);
+
+        // Warn on unknown keys
+        static const set<string> known = {
+            "log_level", "log_file", "log_stdout", "perf_mode",
+            "num_threads", "inter_op_threads", "gpu_mem_limit"
+        };
+        for (auto &[k, v] : cfg)
+            if (!known.count(k)) logger->warn("Unknown config key ignored: '{}'", k);
+
         env = make_unique<Ort::Env>(ORT_LOGGING_LEVEL_WARNING, runtime_get_name());
         session_options = make_unique<Ort::SessionOptions>();
         session_options->SetIntraOpNumThreads(num_threads);
+        if (inter_op_threads > 0)
+            session_options->SetInterOpNumThreads(inter_op_threads);
         OrtCUDAProviderOptions cuda_opts{};
         cuda_opts.device_id = 0;
         cuda_opts.arena_extend_strategy = 0;
-        cuda_opts.gpu_mem_limit = SIZE_MAX;
+        cuda_opts.gpu_mem_limit = gpu_mem_limit;
         cuda_opts.cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;
         cuda_opts.do_copy_in_default_stream = 1;
         session_options->AppendExecutionProvider_CUDA(cuda_opts);
         session_options->SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
         initialized = true;
-        logger->info("Runtime initialized (log_level={}, num_threads={})", log_level, num_threads);
+        logger->info("Runtime initialized (log_level={}, num_threads={}, inter_op_threads={}, gpu_mem_limit={:.1f} GB)",
+                     log_level, num_threads, inter_op_threads, gpu_mem_limit / 1e9);
         return RUNTIME_STATUS_SUCCESS;
     } catch (const exception &e) {
         set_error(string("runtime_init failed: ") + e.what());
@@ -217,7 +274,31 @@ extern "C" RuntimeStatus runtime_load_models(int num_models, const ModelConfig *
             }
 #endif
             ms->output_names = get_output_names(*ms->session);
-            logger->info("Model {}: loaded, {} outputs", i, ms->output_names.size());
+            size_t n_inputs = ms->session->GetInputCount();
+            logger->info("Model {}: loaded, {} inputs, {} outputs", i, n_inputs, ms->output_names.size());
+
+            Ort::AllocatorWithDefaultOptions alloc;
+            for (size_t j = 0; j < n_inputs; ++j) {
+                auto name = ms->session->GetInputNameAllocated(j, alloc);
+                auto info = ms->session->GetInputTypeInfo(j).GetTensorTypeAndShapeInfo();
+                auto shape = info.GetShape();
+                string shape_str;
+                for (size_t d = 0; d < shape.size(); ++d) {
+                    if (d) shape_str += "x";
+                    shape_str += shape[d] < 0 ? "?" : to_string(shape[d]);
+                }
+                logger->debug("  input  [{}] shape={}", name.get(), shape_str);
+            }
+            for (size_t j = 0; j < ms->output_names.size(); ++j) {
+                auto info = ms->session->GetOutputTypeInfo(j).GetTensorTypeAndShapeInfo();
+                auto shape = info.GetShape();
+                string shape_str;
+                for (size_t d = 0; d < shape.size(); ++d) {
+                    if (d) shape_str += "x";
+                    shape_str += shape[d] < 0 ? "?" : to_string(shape[d]);
+                }
+                logger->debug("  output [{}] shape={}", ms->output_names[j], shape_str);
+            }
 
             ms->inference_thread = thread(inference_thread_func, ms.get());
             model_states.push_back(move(ms));
@@ -281,6 +362,10 @@ extern "C" RuntimeStatus runtime_cleanup(void)
     session_options.reset();
     env.reset();
     initialized = false;
+    num_threads = 4;
+    inter_op_threads = 0;
+    gpu_mem_limit = SIZE_MAX;
+    perf_mode_val.clear();
     last_error_msg.clear();
     if (logger) {
         logger->info("Runtime cleaned up");
