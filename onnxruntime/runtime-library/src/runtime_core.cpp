@@ -7,6 +7,7 @@
 #include <vector>
 
 #ifdef _WIN32
+#define NOMINMAX
 #include <windows.h>
 #endif
 
@@ -19,13 +20,19 @@
 
 using namespace std;
 
-// State
+// State.
+// Process-lifetime globals below are intentionally leaked (allocated with
+// `new`, never destroyed): running their destructors during static
+// destruction at process exit — after ORT/spdlog internals are already torn
+// down, or with inference threads still running — crashes or deadlocks the
+// HOST process whenever it exits without calling runtime_cleanup().
+// runtime_cleanup() still releases everything explicitly.
 static bool initialized = false;
-static string last_error_msg;
+static string &last_error_msg = *new string();
 
 // ORT globals
-static unique_ptr<Ort::Env> env;
-static unique_ptr<Ort::SessionOptions> session_options;
+static unique_ptr<Ort::Env> &env = *new unique_ptr<Ort::Env>();
+static unique_ptr<Ort::SessionOptions> &session_options = *new unique_ptr<Ort::SessionOptions>();
 
 // Per-model state
 struct ModelState {
@@ -39,22 +46,43 @@ struct ModelState {
 
 struct OutputItem { int model_id; Tensors *tensors; };
 
-static vector<unique_ptr<ModelState>> model_states;
-static moodycamel::ConcurrentQueue<OutputItem> output_queue;
+static vector<unique_ptr<ModelState>> &model_states = *new vector<unique_ptr<ModelState>>();
+static moodycamel::ConcurrentQueue<OutputItem> &output_queue = *new moodycamel::ConcurrentQueue<OutputItem>();
 
 // Config
 static int log_level = spdlog::level::info;
-static string log_file = "runtime.log";
+#ifdef _WIN32
+// Windows services run with an unwritable CWD (System32); default the log
+// file to the temp directory instead. The PID suffix keeps host processes
+// from fighting over one rotating log file.
+static string default_log_file()
+{
+    char buf[MAX_PATH];
+    DWORD n = GetTempPathA(MAX_PATH, buf);
+    if (n == 0 || n >= MAX_PATH) return "runtime.log";
+    return string(buf) + "oaax-runtime-" + to_string(GetCurrentProcessId()) + ".log";
+}
+#else
+static string default_log_file() { return "runtime.log"; }
+#endif
+static string log_file = default_log_file();
 static int num_threads = 4;
 static int inter_op_threads = 0;        // 0 = ORT default
 static size_t gpu_mem_limit = SIZE_MAX;
 static string perf_mode_val;
 
-static shared_ptr<spdlog::logger> logger;
+static shared_ptr<spdlog::logger> &logger = *new shared_ptr<spdlog::logger>();
 
 static void set_error(const string &msg) {
     last_error_msg = msg;
     if (logger) logger->error("{}", msg);
+}
+
+// For use inside a catch block: message of the in-flight exception.
+static string current_exception_message() {
+    try { throw; }
+    catch (const exception &e) { return e.what(); }
+    catch (...) { return "unknown exception"; }
 }
 
 static void stop_and_clear_models() {
@@ -144,9 +172,9 @@ static void inference_thread_func(ModelState *ms)
                 logger->error("Failed to enqueue output");
                 deep_free_tensors(out);
             }
-        } catch (const exception &e) {
+        } catch (...) {
             if (input) deep_free_tensors(input);
-            logger->error("Inference error: {}", e.what());
+            logger->error("Inference error: {}", current_exception_message());
         }
     }
 }
@@ -157,22 +185,32 @@ extern "C" RuntimeStatus runtime_init(Config config)
         set_error("Runtime already initialized");
         return RUNTIME_STATUS_ALREADY_INITIALIZED;
     }
-
-    // Collect all config into a map for ordered application
-    map<string, string> cfg;
-    for (int i = 0; i < config.length; ++i)
-        cfg[string(config.keys[i])] = string(config.values[i]);
-
-    // Phase 1: extract log settings before logger init
-    if (cfg.count("log_level")) {
-        int v = stoi(cfg["log_level"]);
-        log_level = (v >= spdlog::level::trace && v <= spdlog::level::off) ? v : spdlog::level::info;
+    if (config.length > 0 && (!config.keys || !config.values)) {
+        set_error("Config keys/values must not be null");
+        return RUNTIME_STATUS_INVALID_ARGUMENT;
     }
-    if (cfg.count("log_file"))
-        log_file = cfg["log_file"];
-    bool log_stdout = cfg.count("log_stdout") && cfg["log_stdout"] == "true";
+
+    // A fresh init must not inherit tunables from a previous failed attempt
+    num_threads = 4;
+    inter_op_threads = 0;
+    gpu_mem_limit = SIZE_MAX;
+    perf_mode_val.clear();
 
     try {
+        // Collect all config into a map for ordered application
+        map<string, string> cfg;
+        for (int i = 0; i < config.length; ++i)
+            cfg[string(config.keys[i])] = string(config.values[i]);
+
+        // Phase 1: extract log settings before logger init
+        if (cfg.count("log_level")) {
+            int v = stoi(cfg["log_level"]);
+            log_level = (v >= spdlog::level::trace && v <= spdlog::level::off) ? v : spdlog::level::info;
+        }
+        if (cfg.count("log_file"))
+            log_file = cfg["log_file"];
+        bool log_stdout = cfg.count("log_stdout") && cfg["log_stdout"] == "true";
+
         logger = initialize_logger(log_file, log_level, log_level, runtime_get_name(), log_stdout);
         logger->info("Initializing ORT runtime");
 
@@ -180,6 +218,8 @@ extern "C" RuntimeStatus runtime_init(Config config)
         HwProfile hw = detect_hardware();
         logger->info("Hardware: {} CPU cores, {} GPU SMs, {:.1f} GB GPU memory",
                      hw.cpu_cores, hw.gpu_sm_count, hw.gpu_total_mem / 1e9);
+        if (hw.gpu_sm_count == 0)
+            logger->warn("No CUDA driver or GPU detected; hardware-based defaults unavailable");
 
         // Phase 2: apply perf_mode (sets defaults based on hardware)
         if (cfg.count("perf_mode")) {
@@ -235,8 +275,13 @@ extern "C" RuntimeStatus runtime_init(Config config)
         logger->info("Runtime initialized (log_level={}, num_threads={}, inter_op_threads={}, gpu_mem_limit={:.1f} GB)",
                      log_level, num_threads, inter_op_threads, gpu_mem_limit / 1e9);
         return RUNTIME_STATUS_SUCCESS;
-    } catch (const exception &e) {
-        set_error(string("runtime_init failed: ") + e.what());
+    } catch (...) {
+        // Destroy any half-initialized ORT state now: leaving it to static
+        // destructors at process exit crashes the host (~OrtEnv segfaults
+        // after ORT internals are already torn down).
+        session_options.reset();
+        env.reset();
+        set_error("runtime_init failed: " + current_exception_message());
         return RUNTIME_STATUS_ERROR;
     }
 }
@@ -304,9 +349,9 @@ extern "C" RuntimeStatus runtime_load_models(int num_models, const ModelConfig *
             model_states.push_back(move(ms));
         }
         return RUNTIME_STATUS_SUCCESS;
-    } catch (const exception &e) {
+    } catch (...) {
         stop_and_clear_models();
-        set_error(string("runtime_load_models failed: ") + e.what());
+        set_error("runtime_load_models failed: " + current_exception_message());
         return RUNTIME_STATUS_ERROR;
     }
 }
@@ -317,11 +362,16 @@ extern "C" RuntimeStatus runtime_enqueue_input(int model_id, Tensors *input_tens
     if (model_id < 0 || (size_t)model_id >= model_states.size()) return RUNTIME_STATUS_INVALID_MODEL_ID;
     if (!input_tensors) return RUNTIME_STATUS_INVALID_ARGUMENT;
 
-    if (!model_states[model_id]->input_queue.try_enqueue(input_tensors)) {
-        set_error("Failed to enqueue input tensors");
+    try {
+        if (!model_states[model_id]->input_queue.try_enqueue(input_tensors)) {
+            set_error("Failed to enqueue input tensors");
+            return RUNTIME_STATUS_ERROR;
+        }
+        return RUNTIME_STATUS_SUCCESS;
+    } catch (...) {
+        set_error("runtime_enqueue_input failed: " + current_exception_message());
         return RUNTIME_STATUS_ERROR;
     }
-    return RUNTIME_STATUS_SUCCESS;
 }
 
 extern "C" RuntimeStatus runtime_retrieve_output(int *model_id, Tensors **output_tensors, int timeout_ms)
@@ -329,36 +379,52 @@ extern "C" RuntimeStatus runtime_retrieve_output(int *model_id, Tensors **output
     if (!initialized) return RUNTIME_STATUS_NOT_INITIALIZED;
     if (!model_id || !output_tensors) return RUNTIME_STATUS_INVALID_ARGUMENT;
 
-    OutputItem item;
-    if (timeout_ms == 0) {
-        if (!output_queue.try_dequeue(item))
-            return RUNTIME_STATUS_NO_OUTPUT_AVAILABLE;
-        *model_id = item.model_id;
-        *output_tensors = item.tensors;
-        return RUNTIME_STATUS_SUCCESS;
-    }
-
-    auto start = chrono::steady_clock::now();
-    while (true) {
-        if (output_queue.try_dequeue(item)) {
+    try {
+        OutputItem item;
+        if (timeout_ms == 0) {
+            if (!output_queue.try_dequeue(item))
+                return RUNTIME_STATUS_NO_OUTPUT_AVAILABLE;
             *model_id = item.model_id;
             *output_tensors = item.tensors;
             return RUNTIME_STATUS_SUCCESS;
         }
-        if (timeout_ms > 0) {
-            auto elapsed = chrono::duration_cast<chrono::milliseconds>(
-                chrono::steady_clock::now() - start).count();
-            if (elapsed >= timeout_ms)
-                return RUNTIME_STATUS_NO_OUTPUT_AVAILABLE;
+
+        auto start = chrono::steady_clock::now();
+        while (true) {
+            if (output_queue.try_dequeue(item)) {
+                *model_id = item.model_id;
+                *output_tensors = item.tensors;
+                return RUNTIME_STATUS_SUCCESS;
+            }
+            if (timeout_ms > 0) {
+                auto elapsed = chrono::duration_cast<chrono::milliseconds>(
+                    chrono::steady_clock::now() - start).count();
+                if (elapsed >= timeout_ms)
+                    return RUNTIME_STATUS_NO_OUTPUT_AVAILABLE;
+            }
+            this_thread::sleep_for(chrono::milliseconds(1));
         }
-        this_thread::sleep_for(chrono::milliseconds(1));
+    } catch (...) {
+        set_error("runtime_retrieve_output failed: " + current_exception_message());
+        return RUNTIME_STATUS_ERROR;
     }
 }
 
 extern "C" RuntimeStatus runtime_cleanup(void)
 {
-    stop_and_clear_models();
-    drain_output_queue();
+    RuntimeStatus status = RUNTIME_STATUS_SUCCESS;
+    try {
+        stop_and_clear_models();
+        drain_output_queue();
+    } catch (...) {
+        set_error("runtime_cleanup failed: " + current_exception_message());
+        model_states.clear();
+        status = RUNTIME_STATUS_ERROR;
+    }
+
+    // Always release ORT state and reset flags, even if teardown above threw:
+    // leaving initialized=true would block re-init forever, and a leftover
+    // Ort::Env crashes the host during static destruction at process exit.
     session_options.reset();
     env.reset();
     initialized = false;
@@ -366,13 +432,15 @@ extern "C" RuntimeStatus runtime_cleanup(void)
     inter_op_threads = 0;
     gpu_mem_limit = SIZE_MAX;
     perf_mode_val.clear();
-    last_error_msg.clear();
+    log_level = spdlog::level::info;
+    log_file = default_log_file();
+    if (status == RUNTIME_STATUS_SUCCESS) last_error_msg.clear();
     if (logger) {
         logger->info("Runtime cleaned up");
         destroy_logger(logger);
         logger = nullptr;
     }
-    return RUNTIME_STATUS_SUCCESS;
+    return status;
 }
 
 extern "C" const char *runtime_get_error(void)

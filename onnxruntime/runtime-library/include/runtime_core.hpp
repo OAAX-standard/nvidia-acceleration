@@ -3,8 +3,11 @@
 
 #include "interface.h"
 
+// On Windows, exports are listed in src/runtime_exports.def: MSVC rejects
+// adding __declspec(dllexport) to functions already declared in interface.h
+// without it (error C2375).
 #ifdef _WIN32
-#define EXPOSE_FUNCTION __declspec(dllexport)
+#define EXPOSE_FUNCTION
 #else
 #define EXPOSE_FUNCTION __attribute__((visibility("default")))
 #endif

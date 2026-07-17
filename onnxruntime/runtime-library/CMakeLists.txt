@@ -146,6 +146,10 @@ set(CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS " ")
 
 project(RuntimeLibrary)
 
+# C++17 is required (structured bindings, ORT C++ API)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # Add common warning and optimization flags for C and C++
 if(NOT MSVC)
         set(CMAKE_BUILD_FLAGS "${CMAKE_BUILD_FLAGS} -fno-common -Wall -Wextra -Wformat -Wformat-security")
@@ -185,6 +189,11 @@ file(GLOB_RECURSE SRC
 
 # === Library Target ===
 # Create the shared library target for the runtime
+# On Windows the OAAX API functions are exported via the .def file (see runtime_core.hpp)
+if(MSVC)
+        list(APPEND SRC ${SRC_DIR}/runtime_exports.def)
+endif()
+
 add_library(RuntimeLibrary SHARED ${SRC})
 
 if(NOT MSVC)
@@ -638,6 +647,10 @@ else()
                         -Wl,--end-group
                 )
         endif()
+
+        # dlopen() (via c-utilities' lib_loader) loads the CUDA driver at
+        # runtime for hardware detection
+        target_link_libraries(RuntimeLibrary PRIVATE ${CMAKE_DL_LIBS})
 
         add_custom_command(TARGET RuntimeLibrary POST_BUILD
                 COMMAND cp ${ONNX_RUNTIME_DIR}/${CUDA_BIN_FOLDER_NAME}/*.so ${CMAKE_BINARY_DIR}/bin/

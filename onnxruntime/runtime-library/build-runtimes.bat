@@ -39,10 +39,10 @@ if not defined RUNTIME_VERSION (
 )
 echo Building runtime version: %RUNTIME_VERSION%
 
-REM Call the function with the desired CUDA version
-call :build_runtime 11
-call :build_runtime 12
-call :build_runtime 13
+REM Build for each supported CUDA version.
+REM A failed build must fail the whole script (otherwise CI shows the compile
+REM step green and only fails later when the artifacts are missing).
+for %%v in (11 12 13) do call :build_runtime %%v || exit /b 1
 REM End local environment changes
 endlocal
 goto :eof
@@ -93,12 +93,14 @@ if not exist "%ARTIFACTS_DIR%\Windows\cuda_%cuda_version%" mkdir "%ARTIFACTS_DIR
 
 REM Copy all DLLs from Release to the artifacts Windows directory
 copy bin\Release\*.dll "%ARTIFACTS_DIR%\Windows\cuda_%cuda_version%\"
+if errorlevel 1 exit /b 1
 
 REM Change to the artifacts Windows directory
 pushd "%ARTIFACTS_DIR%\Windows\cuda_%cuda_version%"
 
 REM Create a gzipped tarball of the DLLs in the Windows artifacts directory
 tar czf "%ARTIFACTS_DIR%\runtime-library-X86_64-Windows-cuda_%cuda_version%.tar.gz" *.dll
+if errorlevel 1 exit /b 1
 
 REM Print confirmation message
 echo Shared libraries for Windows have been copied to "%ARTIFACTS_DIR%\Windows\cuda_%cuda_version%"
