@@ -39,6 +39,19 @@ function build_runtime {
     mkdir -p "${ARTIFACTS_DIR}/$platform/$cuda_version"
     echo "Copying shared libraries to artifacts directory..."
     cp ./bin/* "${ARTIFACTS_DIR}/$platform/$cuda_version/"
+
+    # Fetch and bundle cuDNN so the package doesn't depend on a system-wide
+    # cuDNN install. Not every platform/cuda combo has a public package (see
+    # download-cudnn.sh) -- those are skipped with a warning, not a failure.
+    bash "${ROOT_DIR}/scripts/download-cudnn.sh" "$platform" "$cuda_version" --output "${ROOT_DIR}/.deps/cudnn"
+    cudnn_lib_dir="${ROOT_DIR}/.deps/cudnn/${platform}/${cuda_version}/lib"
+    if [ -d "$cudnn_lib_dir" ]; then
+        echo "Bundling cuDNN libraries from ${cudnn_lib_dir}..."
+        cp -P "${cudnn_lib_dir}"/libcudnn*.so* "${ARTIFACTS_DIR}/$platform/$cuda_version/"
+    else
+        echo "WARNING: no cuDNN libraries bundled for ${platform}/cuda_${cuda_version}" >&2
+    fi
+
     # Bundle the shared libraries into a tarball
     cd "${ARTIFACTS_DIR}/$platform/$cuda_version/"
     echo "Creating tarball of shared libraries..."

@@ -21,6 +21,8 @@ jobs:
     runs-on: hetzner-runner
     container:
       image: ubuntu:22.04
+      options: >-
+        --volume ${{ vars.NVIDIA_DEPS_DIR }}:${{ vars.NVIDIA_DEPS_DIR }}
 
     steps:
       - name: Set up environment
@@ -36,6 +38,11 @@ jobs:
           fetch-depth: 1
           submodules: recursive
           lfs: true
+
+      - name: Link pre-cached cuDNN
+        run: |
+          mkdir -p .deps
+          ln -fs ${{ vars.NVIDIA_DEPS_DIR }}/cudnn .deps/cudnn
 
       - name: Determine version
         run: |
@@ -111,6 +118,12 @@ jobs:
           fetch-depth: 1
           submodules: recursive
           lfs: true
+
+      - name: Cache cuDNN downloads
+        uses: actions/cache@v4
+        with:
+          path: .deps\cudnn
+          key: cudnn-windows-${{ hashFiles('scripts/download-cudnn.sh') }}
 
       - name: Compile runtime
         run: |

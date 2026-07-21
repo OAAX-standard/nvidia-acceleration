@@ -95,6 +95,27 @@ REM Copy all DLLs from Release to the artifacts Windows directory
 copy bin\Release\*.dll "%ARTIFACTS_DIR%\Windows\cuda_%cuda_version%\"
 if errorlevel 1 exit /b 1
 
+REM Fetch and bundle cuDNN so the package doesn't depend on a system-wide
+REM cuDNN install. Not every CUDA version has a pinned package -- those are
+REM skipped with a warning, not a failure. Uses Git Bash (bash.exe), which
+REM ships on GitHub's windows-latest runners and any dev box with Git installed.
+bash "%ROOT_DIR%/scripts/download-cudnn.sh" WINDOWS %cuda_version% --output "%ROOT_DIR%/.deps/cudnn"
+if errorlevel 1 exit /b 1
+
+REM cuDNN's Windows packaging is inconsistent across versions: cuDNN 8.9's
+REM archive has DLLs flat under bin\, cuDNN 9.25's has them under bin\x64\.
+REM Search recursively so both layouts are handled.
+set "CUDNN_BIN_DIR=%ROOT_DIR%\.deps\cudnn\WINDOWS\%cuda_version%\bin"
+if exist "%CUDNN_BIN_DIR%" (
+	echo Bundling cuDNN DLLs from "%CUDNN_BIN_DIR%"...
+	for /r "%CUDNN_BIN_DIR%" %%F in (*.dll) do (
+		copy "%%F" "%ARTIFACTS_DIR%\Windows\cuda_%cuda_version%\"
+		if errorlevel 1 exit /b 1
+	)
+) else (
+	echo WARNING: no cuDNN DLLs bundled for cuda_%cuda_version%
+)
+
 REM Change to the artifacts Windows directory
 pushd "%ARTIFACTS_DIR%\Windows\cuda_%cuda_version%"
 
