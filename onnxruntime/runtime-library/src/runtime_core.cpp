@@ -213,8 +213,10 @@ extern "C" RuntimeStatus runtime_init(Config config)
 
         logger = initialize_logger(log_file, log_level, log_level, runtime_get_name(), log_stdout);
         logger->info("Initializing ORT runtime");
+        logger->debug("runtime_init: parsed {} config entries", config.length);
 
         // Detect hardware
+        logger->debug("runtime_init: detecting hardware");
         HwProfile hw = detect_hardware();
         logger->info("Hardware: {} CPU cores, {} GPU SMs, {:.1f} GB GPU memory",
                      hw.cpu_cores, hw.gpu_sm_count, hw.gpu_total_mem / 1e9);
@@ -222,6 +224,7 @@ extern "C" RuntimeStatus runtime_init(Config config)
             logger->warn("No CUDA driver or GPU detected; hardware-based defaults unavailable");
 
         // Phase 2: apply perf_mode (sets defaults based on hardware)
+        logger->debug("runtime_init: applying perf_mode (if set)");
         if (cfg.count("perf_mode")) {
             perf_mode_val = cfg["perf_mode"];
             if (perf_mode_val != "power" && perf_mode_val != "eco") {
@@ -243,6 +246,7 @@ extern "C" RuntimeStatus runtime_init(Config config)
         }
 
         // Phase 3: explicit keys override perf_mode
+        logger->debug("runtime_init: applying explicit config overrides");
         if (cfg.count("num_threads"))
             num_threads = max(1, min(512, stoi(cfg["num_threads"])));
         if (cfg.count("inter_op_threads"))
@@ -258,18 +262,24 @@ extern "C" RuntimeStatus runtime_init(Config config)
         for (auto &[k, v] : cfg)
             if (!known.count(k)) logger->warn("Unknown config key ignored: '{}'", k);
 
+        logger->debug("runtime_init: creating Ort::Env");
         env = make_unique<Ort::Env>(ORT_LOGGING_LEVEL_WARNING, runtime_get_name());
+        logger->debug("runtime_init: creating Ort::SessionOptions (num_threads={}, inter_op_threads={})",
+                      num_threads, inter_op_threads);
         session_options = make_unique<Ort::SessionOptions>();
         session_options->SetIntraOpNumThreads(num_threads);
         if (inter_op_threads > 0)
             session_options->SetInterOpNumThreads(inter_op_threads);
+        logger->debug("runtime_init: configuring CUDA EP options (device_id=0, gpu_mem_limit={})", gpu_mem_limit);
         OrtCUDAProviderOptions cuda_opts{};
         cuda_opts.device_id = 0;
         cuda_opts.arena_extend_strategy = 0;
         cuda_opts.gpu_mem_limit = gpu_mem_limit;
         cuda_opts.cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;
         cuda_opts.do_copy_in_default_stream = 1;
+        logger->debug("runtime_init: appending CUDA execution provider");
         session_options->AppendExecutionProvider_CUDA(cuda_opts);
+        logger->debug("runtime_init: setting graph optimization level");
         session_options->SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
         initialized = true;
         logger->info("Runtime initialized (log_level={}, num_threads={}, inter_op_threads={}, gpu_mem_limit={:.1f} GB)",
@@ -294,23 +304,31 @@ extern "C" RuntimeStatus runtime_load_models(int num_models, const ModelConfig *
     stop_and_clear_models();
     drain_output_queue();
 
+    logger->debug("runtime_load_models: num_models={}", num_models);
     try {
         for (int i = 0; i < num_models; ++i) {
             const ModelConfig &mc = model_configs[i];
+            logger->debug("Model {}: file_path={} model_data={} model_size={}",
+                          i, mc.file_path ? mc.file_path : "(null)",
+                          (const void *)mc.model_data, mc.model_size);
             auto ms = make_unique<ModelState>();
             ms->model_id = i;
 
 #ifdef _WIN32
             if (mc.file_path) {
+                logger->debug("Model {}: converting file_path to wide string", i);
                 int sz = MultiByteToWideChar(CP_UTF8, 0, mc.file_path, -1, NULL, 0);
                 wstring wpath(sz, 0);
                 MultiByteToWideChar(CP_UTF8, 0, mc.file_path, -1, &wpath[0], sz);
+                logger->debug("Model {}: creating Ort::Session from file_path (wide)", i);
                 ms->session = make_unique<Ort::Session>(*env, wpath.c_str(), *session_options);
             }
 #else
             if (mc.file_path) {
+                logger->debug("Model {}: creating Ort::Session from file_path", i);
                 ms->session = make_unique<Ort::Session>(*env, mc.file_path, *session_options);
             } else if (mc.model_data && mc.model_size > 0) {
+                logger->debug("Model {}: creating Ort::Session from in-memory buffer ({} bytes)", i, mc.model_size);
                 ms->session = make_unique<Ort::Session>(*env, mc.model_data, mc.model_size, *session_options);
             } else {
                 set_error("ModelConfig must have file_path or model_data");
@@ -318,15 +336,26 @@ extern "C" RuntimeStatus runtime_load_models(int num_models, const ModelConfig *
                 return RUNTIME_STATUS_INVALID_ARGUMENT;
             }
 #endif
+            logger->debug("Model {}: session created, fetching output names", i);
             ms->output_names = get_output_names(*ms->session);
+            logger->debug("Model {}: got {} output names, fetching input count", i, ms->output_names.size());
             size_t n_inputs = ms->session->GetInputCount();
             logger->info("Model {}: loaded, {} inputs, {} outputs", i, n_inputs, ms->output_names.size());
 
             Ort::AllocatorWithDefaultOptions alloc;
             for (size_t j = 0; j < n_inputs; ++j) {
+                logger->debug("Model {}: input[{}] fetching name", i, j);
                 auto name = ms->session->GetInputNameAllocated(j, alloc);
-                auto info = ms->session->GetInputTypeInfo(j).GetTensorTypeAndShapeInfo();
+                logger->debug("Model {}: input[{}] name={}, fetching type/shape info", i, j, name.get());
+                // Keep the TypeInfo alive: GetTensorTypeAndShapeInfo() returns a
+                // non-owning view into memory owned by it (CastTypeInfoToTensorInfo
+                // is a pointer cast, not a copy) - binding straight off a temporary
+                // dangles as soon as this statement ends.
+                Ort::TypeInfo type_info = ms->session->GetInputTypeInfo(j);
+                auto info = type_info.GetTensorTypeAndShapeInfo();
+                logger->debug("Model {}: input[{}] fetching GetShape()", i, j);
                 auto shape = info.GetShape();
+                logger->debug("Model {}: input[{}] shape rank={}", i, j, shape.size());
                 string shape_str;
                 for (size_t d = 0; d < shape.size(); ++d) {
                     if (d) shape_str += "x";
@@ -335,8 +364,12 @@ extern "C" RuntimeStatus runtime_load_models(int num_models, const ModelConfig *
                 logger->debug("  input  [{}] shape={}", name.get(), shape_str);
             }
             for (size_t j = 0; j < ms->output_names.size(); ++j) {
-                auto info = ms->session->GetOutputTypeInfo(j).GetTensorTypeAndShapeInfo();
+                logger->debug("Model {}: output[{}] ({}) fetching type/shape info", i, j, ms->output_names[j]);
+                Ort::TypeInfo type_info = ms->session->GetOutputTypeInfo(j);
+                auto info = type_info.GetTensorTypeAndShapeInfo();
+                logger->debug("Model {}: output[{}] fetching GetShape()", i, j);
                 auto shape = info.GetShape();
+                logger->debug("Model {}: output[{}] shape rank={}", i, j, shape.size());
                 string shape_str;
                 for (size_t d = 0; d < shape.size(); ++d) {
                     if (d) shape_str += "x";
@@ -345,8 +378,10 @@ extern "C" RuntimeStatus runtime_load_models(int num_models, const ModelConfig *
                 logger->debug("  output [{}] shape={}", ms->output_names[j], shape_str);
             }
 
+            logger->debug("Model {}: starting inference thread", i);
             ms->inference_thread = thread(inference_thread_func, ms.get());
             model_states.push_back(move(ms));
+            logger->debug("Model {}: fully loaded and registered", i);
         }
         return RUNTIME_STATUS_SUCCESS;
     } catch (...) {
@@ -362,11 +397,14 @@ extern "C" RuntimeStatus runtime_enqueue_input(int model_id, Tensors *input_tens
     if (model_id < 0 || (size_t)model_id >= model_states.size()) return RUNTIME_STATUS_INVALID_MODEL_ID;
     if (!input_tensors) return RUNTIME_STATUS_INVALID_ARGUMENT;
 
+    logger->debug("runtime_enqueue_input: model_id={} num_tensors={} id={}",
+                  model_id, input_tensors->num_tensors, input_tensors->id);
     try {
         if (!model_states[model_id]->input_queue.try_enqueue(input_tensors)) {
             set_error("Failed to enqueue input tensors");
             return RUNTIME_STATUS_ERROR;
         }
+        logger->debug("runtime_enqueue_input: model_id={} enqueued successfully", model_id);
         return RUNTIME_STATUS_SUCCESS;
     } catch (...) {
         set_error("runtime_enqueue_input failed: " + current_exception_message());
@@ -379,13 +417,17 @@ extern "C" RuntimeStatus runtime_retrieve_output(int *model_id, Tensors **output
     if (!initialized) return RUNTIME_STATUS_NOT_INITIALIZED;
     if (!model_id || !output_tensors) return RUNTIME_STATUS_INVALID_ARGUMENT;
 
+    logger->debug("runtime_retrieve_output: timeout_ms={}", timeout_ms);
     try {
         OutputItem item;
         if (timeout_ms == 0) {
-            if (!output_queue.try_dequeue(item))
+            if (!output_queue.try_dequeue(item)) {
+                logger->debug("runtime_retrieve_output: no output available (non-blocking)");
                 return RUNTIME_STATUS_NO_OUTPUT_AVAILABLE;
+            }
             *model_id = item.model_id;
             *output_tensors = item.tensors;
+            logger->debug("runtime_retrieve_output: got output for model_id={}", item.model_id);
             return RUNTIME_STATUS_SUCCESS;
         }
 
@@ -394,13 +436,16 @@ extern "C" RuntimeStatus runtime_retrieve_output(int *model_id, Tensors **output
             if (output_queue.try_dequeue(item)) {
                 *model_id = item.model_id;
                 *output_tensors = item.tensors;
+                logger->debug("runtime_retrieve_output: got output for model_id={}", item.model_id);
                 return RUNTIME_STATUS_SUCCESS;
             }
             if (timeout_ms > 0) {
                 auto elapsed = chrono::duration_cast<chrono::milliseconds>(
                     chrono::steady_clock::now() - start).count();
-                if (elapsed >= timeout_ms)
+                if (elapsed >= timeout_ms) {
+                    logger->debug("runtime_retrieve_output: timed out after {} ms", elapsed);
                     return RUNTIME_STATUS_NO_OUTPUT_AVAILABLE;
+                }
             }
             this_thread::sleep_for(chrono::milliseconds(1));
         }
@@ -413,9 +458,12 @@ extern "C" RuntimeStatus runtime_retrieve_output(int *model_id, Tensors **output
 extern "C" RuntimeStatus runtime_cleanup(void)
 {
     RuntimeStatus status = RUNTIME_STATUS_SUCCESS;
+    if (logger) logger->debug("runtime_cleanup: stopping {} model(s)", model_states.size());
     try {
         stop_and_clear_models();
+        if (logger) logger->debug("runtime_cleanup: models stopped, draining output queue");
         drain_output_queue();
+        if (logger) logger->debug("runtime_cleanup: output queue drained");
     } catch (...) {
         set_error("runtime_cleanup failed: " + current_exception_message());
         model_states.clear();
@@ -425,6 +473,7 @@ extern "C" RuntimeStatus runtime_cleanup(void)
     // Always release ORT state and reset flags, even if teardown above threw:
     // leaving initialized=true would block re-init forever, and a leftover
     // Ort::Env crashes the host during static destruction at process exit.
+    if (logger) logger->debug("runtime_cleanup: releasing ORT state");
     session_options.reset();
     env.reset();
     initialized = false;
