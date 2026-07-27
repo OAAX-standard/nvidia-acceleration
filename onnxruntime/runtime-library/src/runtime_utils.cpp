@@ -1,3 +1,4 @@
+#include <cstring>
 #include <iostream>
 #include <vector>
 #include <stdexcept>
@@ -45,7 +46,15 @@ vector<char *> get_output_names(Ort::Session &session)
     names.reserve(count);
     for (size_t i = 0; i < count; ++i) {
         Ort::AllocatedStringPtr p = session.GetOutputNameAllocated(i, allocator);
-        names.emplace_back(p.release());
+        // p owns memory from ORT's allocator, which on Windows is backed by
+        // _aligned_malloc/_aligned_free - freeing it with plain free() (as
+        // stop_and_clear_models() does for entries in `names`) corrupts the
+        // heap. Copy into a CRT-owned buffer instead and let p's destructor
+        // free the ORT-owned original the correct way.
+        size_t len = strlen(p.get()) + 1;
+        char *name = (char *)malloc(len);
+        memcpy(name, p.get(), len);
+        names.emplace_back(name);
     }
     return names;
 }
