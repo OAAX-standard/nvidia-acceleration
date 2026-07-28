@@ -119,6 +119,19 @@ int get_element_byte_size(TensorElementType t)
     }
 }
 
+// Leaked wrapper (never destructed at process exit -- see the leaked globals
+// in runtime_core.cpp), so it's always safe to explicitly reset the pool it
+// points to from destroy_logger(). A fresh pool is created on every
+// initialize_logger() call; destroy_logger() drops it there, which runs
+// thread_pool's real destructor and joins its worker thread synchronously.
+// async_logger only holds a weak_ptr to the pool, so this reference is its
+// sole owner. A thread whose code lives in this DLL must be joined before
+// runtime_cleanup() returns, or FreeLibrary() on Windows leaves the DLL
+// pinned and its file can't be replaced/deleted. If the host never calls
+// runtime_cleanup(), this wrapper (and the pool it holds) simply stays alive
+// until process exit, same as today -- no join happens, no deadlock risk.
+static auto &thread_pool = *new shared_ptr<spdlog::details::thread_pool>();
+
 shared_ptr<spdlog::logger> initialize_logger(const string &log_file,
                                               int file_level,
                                               int console_level,
@@ -149,11 +162,7 @@ shared_ptr<spdlog::logger> initialize_logger(const string &log_file,
         sinks.push_back(console_sink);
     }
 
-    // Intentionally leaked: joining the pool's worker thread during static
-    // destruction at process exit can deadlock/crash the host (see the
-    // leaked globals in runtime_core.cpp).
-    static auto &thread_pool = *new shared_ptr<spdlog::details::thread_pool>(
-        make_shared<spdlog::details::thread_pool>(8192, 1));
+    thread_pool = make_shared<spdlog::details::thread_pool>(8192, 1);
 
     auto logger = make_shared<spdlog::async_logger>(
         prefix, sinks.begin(), sinks.end(),
@@ -176,6 +185,11 @@ void destroy_logger(const shared_ptr<spdlog::logger> &logger)
         logger->flush();
         spdlog::drop(logger->name());
     }
+    // Sole strong owner of the pool (see the comment above initialize_logger):
+    // this runs ~thread_pool() now, joining its worker thread before
+    // returning so runtime_cleanup() never leaves a RuntimeLibrary-resident
+    // thread running past the call.
+    thread_pool.reset();
 }
 
 // GPU detection uses the CUDA *driver* API (nvcuda.dll / libcuda.so.1),
