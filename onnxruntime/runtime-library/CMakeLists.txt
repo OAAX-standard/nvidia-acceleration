@@ -155,10 +155,22 @@ if(NOT MSVC)
         set(CMAKE_BUILD_FLAGS "${CMAKE_BUILD_FLAGS} -fno-common -Wall -Wextra -Wformat -Wformat-security")
         set(CMAKE_BUILD_FLAGS "${CMAKE_BUILD_FLAGS} -Wno-missing-field-initializers -Wno-attribute-warning")
         set(CMAKE_BUILD_FLAGS "${CMAKE_BUILD_FLAGS} -fdata-sections -ffunction-sections -Wl,--gc-sections -fno-exceptions")
+        # Statically-linked ONNX Runtime/onnx/protobuf/abseil brings thousands of inline/template
+        # symbols. With the default (exported) visibility, GCC emits many of these as GNU_UNIQUE,
+        # which the dynamic linker deliberately shares across EVERY independently dlopen()'d copy
+        # of this library in a process, bypassing RTLD_LOCAL isolation entirely. The AI Manager
+        # plugin's reload path (nx_ai_manager_plugin/.../nxai_runtime.cpp) hard-links this .so to a
+        # fresh inode and dlopen()s it on every runtime reselect/reload; if a previous instance is
+        # still resident (e.g. not fully unmapped - see rule 3/addendum in
+        # shared-library-robustness-rules), the new instance's GNU_UNIQUE ORT internals - including
+        # its type registry - collide with the old one's, corrupting the new instance. Hidden
+        # visibility (+ -fno-gnu-unique) makes every internal symbol private per-DSO-copy; only the
+        # OAAX v2 API (marked EXPOSE_FUNCTION in runtime_core.hpp) stays exported.
+        set(CMAKE_BUILD_FLAGS "${CMAKE_BUILD_FLAGS} -fvisibility=hidden -fno-gnu-unique")
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wformat -Wformat-security -fdata-sections -ffunction-sections -Wl,--gc-sections")
         set(CMAKE_C_FLAGS " ${CMAKE_C_FLAGS} ${CMAKE_BUILD_FLAGS}  -D_GNU_SOURCE -I${CROSS_ROOT}/include")
-        set(CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS} ${CMAKE_BUILD_FLAGS}  -D_GNU_SOURCE -I${CROSS_ROOT}/include -fexceptions")
-        set(CMAKE_CPP_FLAGS " ${CMAKE_CPP_FLAGS} ${CMAKE_BUILD_FLAGS}  -D_GNU_SOURCE -I${CROSS_ROOT}/include -fexceptions")
+        set(CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS} ${CMAKE_BUILD_FLAGS}  -D_GNU_SOURCE -I${CROSS_ROOT}/include -fexceptions -fvisibility-inlines-hidden")
+        set(CMAKE_CPP_FLAGS " ${CMAKE_CPP_FLAGS} ${CMAKE_BUILD_FLAGS}  -D_GNU_SOURCE -I${CROSS_ROOT}/include -fexceptions -fvisibility-inlines-hidden")
 endif()
 
 # === Generic Build Settings ===
@@ -651,6 +663,14 @@ else()
         # dlopen() (via c-utilities' lib_loader) loads the CUDA driver at
         # runtime for hardware detection
         target_link_libraries(RuntimeLibrary PRIVATE ${CMAKE_DL_LIBS})
+
+        # Restrict the dynamic symbol table to the OAAX v2 API (see runtime_exports.version):
+        # -fvisibility=hidden above only covers our own sources, not the prebuilt ORT/onnx/
+        # protobuf/abseil static libs linked in below, so their symbols still need to be hidden
+        # from the *final* .so's dynamic table at link time.
+        target_link_options(RuntimeLibrary PRIVATE
+                "-Wl,--version-script=${SRC_DIR}/runtime_exports.version"
+        )
 
         add_custom_command(TARGET RuntimeLibrary POST_BUILD
                 COMMAND cp ${ONNX_RUNTIME_DIR}/${CUDA_BIN_FOLDER_NAME}/*.so ${CMAKE_BINARY_DIR}/bin/
