@@ -29,4 +29,10 @@ struct HwProfile {
 };
 HwProfile detect_hardware();
 
+// Windows: make this DLL's own directory visible to libraries that load
+// their components with plain LoadLibrary at runtime (cuDNN 9). No-op on
+// other platforms. Returns an empty string on success, or a fatal
+// configuration error message that runtime_init must report.
+string prepare_dll_search_path(spdlog::logger &log);
+
 #endif // RUNTIME_UTILS_HPP

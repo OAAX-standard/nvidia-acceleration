@@ -1,8 +1,15 @@
+#include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <iostream>
 #include <vector>
 #include <stdexcept>
 #include <thread>
+
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#endif
 
 #include "runtime_utils.hpp"
 #include <onnxruntime_cxx_api.h>
@@ -191,6 +198,80 @@ void destroy_logger(const shared_ptr<spdlog::logger> &logger)
     // thread running past the call.
     thread_pool.reset();
 }
+
+#ifdef _WIN32
+// Directory containing this DLL (resolved from an address inside it, not the
+// host exe). Empty string on failure.
+static string get_own_module_dir()
+{
+    HMODULE mod = nullptr;
+    if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            (LPCSTR)&get_own_module_dir, &mod))
+        return "";
+    char path[MAX_PATH];
+    DWORD n = GetModuleFileNameA(mod, path, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return "";
+    char *slash = strrchr(path, '\\');
+    if (!slash) return "";
+    *slash = 0;
+    return path;
+}
+
+static bool resolvable_via_search_path(const char *dll_name)
+{
+    char found[MAX_PATH];
+    return SearchPathA(NULL, dll_name, NULL, MAX_PATH, found, NULL) > 0;
+}
+
+// cuDNN 9's cudnn64_9.dll is a thin loader shim: at cudnnCreate() time it
+// LoadLibrary()s its component DLLs (cudnn_graph64_9.dll, cudnn_engines_*,
+// ...) via the STANDARD search order - host exe dir, System32, PATH - which
+// does not include this runtime's folder when we are hosted by another
+// process (e.g. a mediaserver service). When the components can't be found,
+// cuDNN abort()s the entire host process (fail-fast 0xc0000409). Prepending
+// our own directory to the process PATH lets those late loads resolve; the
+// host-side LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR only covers our static import
+// chain and cannot reach LoadLibrary calls cuDNN makes on its own.
+string prepare_dll_search_path(spdlog::logger &log)
+{
+    string dir = get_own_module_dir();
+    if (dir.empty()) {
+        log.warn("Could not resolve the runtime's own directory; "
+                 "dependent DLLs may not be found");
+        return "";
+    }
+
+    DWORD len = GetEnvironmentVariableA("PATH", NULL, 0);
+    string path(len ? len - 1 : 0, '\0');
+    if (len) GetEnvironmentVariableA("PATH", &path[0], len);
+
+    // Idempotent across init/cleanup cycles: don't grow PATH on re-init.
+    auto icontains = [](const string &hay, const string &needle) {
+        auto it = search(hay.begin(), hay.end(), needle.begin(), needle.end(),
+                         [](char a, char b) { return toupper((unsigned char)a) == toupper((unsigned char)b); });
+        return it != hay.end();
+    };
+    if (!icontains(path, dir)) {
+        if (!SetEnvironmentVariableA("PATH", (dir + ";" + path).c_str()))
+            log.warn("Failed to prepend '{}' to PATH (error {})", dir, GetLastError());
+        else
+            log.info("Prepended runtime directory to PATH for cuDNN component resolution: {}", dir);
+    }
+
+    // A resolvable cudnn64_9.dll whose components are NOT resolvable would
+    // abort() the host at model-load time - fail init cleanly instead.
+    if (resolvable_via_search_path("cudnn64_9.dll") &&
+        !resolvable_via_search_path("cudnn_graph64_9.dll"))
+        return "cudnn64_9.dll is present but its component cudnn_graph64_9.dll is not "
+               "findable (searched the runtime directory, system dirs and PATH). "
+               "cuDNN 9 would abort() the host process at model load. Deploy the "
+               "complete cuDNN package next to the runtime library.";
+    return "";
+}
+#else
+string prepare_dll_search_path(spdlog::logger &) { return ""; }
+#endif
 
 // GPU detection uses the CUDA *driver* API (nvcuda.dll / libcuda.so.1),
 // loaded dynamically via c-utilities' lib_loader:

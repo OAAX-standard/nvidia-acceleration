@@ -215,6 +215,16 @@ extern "C" RuntimeStatus runtime_init(Config config)
         logger->info("Initializing ORT runtime");
         logger->debug("runtime_init: parsed {} config entries", config.length);
 
+        // Must run before any ORT/CUDA object is created: cuDNN 9 resolves
+        // its component DLLs through the process search path (see
+        // prepare_dll_search_path), and a bad configuration must fail here
+        // with a clean error instead of abort()ing the host at model load.
+        string search_path_error = prepare_dll_search_path(*logger);
+        if (!search_path_error.empty()) {
+            set_error("runtime_init failed: " + search_path_error);
+            return RUNTIME_STATUS_ERROR;
+        }
+
         // Detect hardware
         logger->debug("runtime_init: detecting hardware");
         HwProfile hw = detect_hardware();
