@@ -29,7 +29,7 @@ jobs:
         run: |
           export DEBIAN_FRONTEND=noninteractive
           apt-get update
-          apt-get install -y git git-lfs wget curl build-essential cmake s3cmd xz-utils
+          apt-get install -y git git-lfs wget curl build-essential cmake s3cmd xz-utils patchelf
           git lfs install
 
       - name: Checkout

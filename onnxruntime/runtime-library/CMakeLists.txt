@@ -672,8 +672,14 @@ else()
                 "-Wl,--version-script=${SRC_DIR}/runtime_exports.version"
         )
 
+        # The prebuilt ORT libs (e.g. libonnxruntime_providers_cuda.so) ship with an
+        # absolute, build-machine-only RUNPATH baked in by ORT's own build (e.g.
+        # /opt/cudnn-...-archive/lib) instead of $ORIGIN, so their cuDNN dependency
+        # can't be found once the .so is deployed elsewhere. Rewrite it to $ORIGIN so
+        # it resolves against whatever bundles it (see INSTALL_RPATH below).
         add_custom_command(TARGET RuntimeLibrary POST_BUILD
                 COMMAND cp ${ONNX_RUNTIME_DIR}/${CUDA_BIN_FOLDER_NAME}/*.so ${CMAKE_BINARY_DIR}/bin/
+                COMMAND bash -c "patchelf --set-rpath '$ORIGIN' ${CMAKE_BINARY_DIR}/bin/*.so"
         )
 endif()
 
