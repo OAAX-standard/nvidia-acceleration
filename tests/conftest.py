@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.backends import TRT, ORT, ARTIFACTS_DIR
+from tests.backends import TRT, ORT, TRT_INT8, ARTIFACTS_DIR
 
 MODELS          = ["yolov8n", "yolo11n", "yolo11s", "mobilenetv2"]
 YOLO_MODELS_320 = ["yolo11n_320", "yolo11s_320"]
@@ -78,6 +78,24 @@ def compiled_models(backend):
             backend.convert(model_name, onnx, dest.parent)
         result[model_name] = dest
     return result
+
+
+@pytest.fixture(scope="session")
+def compiled_yolov8n_int8():
+    """Convert yolov8n to a TRT INT8 engine. Returns {model_name: Path}."""
+    _require_backend(TRT_INT8)
+    _require_ultralytics()
+
+    from tests.models import download_model
+
+    onnx_dir = TRT_INT8.cache_dir / "onnx"
+    onnx_dir.mkdir(parents=True, exist_ok=True)
+
+    onnx = Path(download_model("yolov8n", str(onnx_dir)))
+    dest = TRT_INT8.cache_dir / "yolov8n_int8" / TRT_INT8.output_filename
+    if not dest.exists():
+        TRT_INT8.convert("yolov8n_int8", onnx, dest.parent)
+    return {"yolov8n_int8": dest}
 
 
 @pytest.fixture(scope="session")

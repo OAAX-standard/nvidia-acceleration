@@ -39,6 +39,19 @@ function build_runtime {
     mkdir -p "${ARTIFACTS_DIR}/$platform/$cuda_version"
     echo "Copying shared libraries to artifacts directory..."
     cp ./bin/* "${ARTIFACTS_DIR}/$platform/$cuda_version/"
+
+    # Fetch and bundle cuDNN so the package doesn't depend on a system-wide
+    # cuDNN install. Not every platform/cuda combo has a public package (see
+    # download-cudnn.sh) -- those are skipped with a warning, not a failure.
+    bash "${ROOT_DIR}/scripts/download-cudnn.sh" "$platform" "$cuda_version" --output "${ROOT_DIR}/.deps/cudnn"
+    cudnn_lib_dir="${ROOT_DIR}/.deps/cudnn/${platform}/${cuda_version}/lib"
+    if [ -d "$cudnn_lib_dir" ]; then
+        echo "Bundling cuDNN libraries from ${cudnn_lib_dir}..."
+        cp -P "${cudnn_lib_dir}"/libcudnn*.so* "${ARTIFACTS_DIR}/$platform/$cuda_version/"
+    else
+        echo "WARNING: no cuDNN libraries bundled for ${platform}/cuda_${cuda_version}" >&2
+    fi
+
     # Bundle the shared libraries into a tarball
     cd "${ARTIFACTS_DIR}/$platform/$cuda_version/"
     echo "Creating tarball of shared libraries..."
@@ -58,7 +71,7 @@ if [[ "$PLATFORM" == "X86_64" && "$CUDA_VERSION" == "13" || "$ALL" == "1" ]]; th
     build_runtime "X86_64" "13"
 fi
 
-# AARCH64 builds
+# AARCH64 builds (Jetson and other embedded aarch64 devices)
 if [[ "$PLATFORM" == "AARCH64" && "$CUDA_VERSION" == "11" || "$ALL" == "1" ]]; then
     build_runtime "AARCH64" "11"
 fi
@@ -67,4 +80,9 @@ if [[ "$PLATFORM" == "AARCH64" && "$CUDA_VERSION" == "12" || "$ALL" == "1" ]]; t
 fi
 if [[ "$PLATFORM" == "AARCH64" && "$CUDA_VERSION" == "13" || "$ALL" == "1" ]]; then
     build_runtime "AARCH64" "13"
+fi
+
+# AARCH64_SBSA builds (aarch64 server machines, e.g. NVIDIA DGX Spark with Grace CPU + Blackwell GPU)
+if [[ "$PLATFORM" == "AARCH64_SBSA" && "$CUDA_VERSION" == "13" || "$ALL" == "1" ]]; then
+    build_runtime "AARCH64_SBSA" "13"
 fi

@@ -28,7 +28,7 @@ if(WIN32)
 endif()
 
 if(NOT DEFINED PLATFORM)
-        message(FATAL_ERROR "Please specify the target platform: -DPLATFORM=X86_64, -DPLATFORM=AARCH64, or use Windows.")
+        message(FATAL_ERROR "Please specify the target platform: -DPLATFORM=X86_64, -DPLATFORM=AARCH64, -DPLATFORM=AARCH64_SBSA, or use Windows.")
 endif()
 
 set(CUDA_VERSION "11" CACHE STRING "CUDA version")
@@ -79,6 +79,17 @@ elseif(PLATFORM STREQUAL "AARCH64")
 
         set(COMPILER_PREFIX "aarch64-none-linux-gnu-")
         set(ADDITIONAL_LIBS "clog")
+elseif(PLATFORM STREQUAL "AARCH64_SBSA")
+        # Target: aarch64 server machines (e.g. NVIDIA DGX Spark with Grace CPU + Blackwell GPU)
+        set(GENERIC_BUILD_TARGET AARCH64_SBSA)
+        set(CMAKE_SYSTEM_PROCESSOR aarch64)
+        set(CMAKE_SYSTEM_NAME Linux)
+
+        # ARM GCC 13.2 toolchain — supports -mcpu=neoverse-v2 for NVIDIA Grace CPU
+        set(CROSS_ROOT "/opt/arm-gnu-toolchain-13.2.Rel1-x86_64-aarch64-none-linux-gnu")
+        set(COMPILER_PREFIX "aarch64-none-linux-gnu-")
+
+        set(CMAKE_BUILD_FLAGS "-fno-math-errno -fopenmp")
 elseif(PLATFORM STREQUAL "WINDOWS")
         set(GENERIC_BUILD_TARGET X86_64_WINDOWS)
         set(CMAKE_SYSTEM_PROCESSOR x86_64)
@@ -90,7 +101,7 @@ elseif(PLATFORM STREQUAL "WINDOWS")
 
 # Do not add compiler flags to CMAKE_BUILD_FLAGS to avoid linker warnings
 else()
-        message(FATAL_ERROR "Please specify the target platform: X86_64, AARCH64, or WINDOWS. Found ${PLATFORM}")
+        message(FATAL_ERROR "Please specify the target platform: X86_64, AARCH64, AARCH64_SBSA, or WINDOWS. Found ${PLATFORM}")
 endif()
 
 # Print toolchain and sysroot info for debugging
@@ -135,15 +146,31 @@ set(CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS " ")
 
 project(RuntimeLibrary)
 
+# C++17 is required (structured bindings, ORT C++ API)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # Add common warning and optimization flags for C and C++
 if(NOT MSVC)
         set(CMAKE_BUILD_FLAGS "${CMAKE_BUILD_FLAGS} -fno-common -Wall -Wextra -Wformat -Wformat-security")
         set(CMAKE_BUILD_FLAGS "${CMAKE_BUILD_FLAGS} -Wno-missing-field-initializers -Wno-attribute-warning")
         set(CMAKE_BUILD_FLAGS "${CMAKE_BUILD_FLAGS} -fdata-sections -ffunction-sections -Wl,--gc-sections -fno-exceptions")
+        # Statically-linked ONNX Runtime/onnx/protobuf/abseil brings thousands of inline/template
+        # symbols. With the default (exported) visibility, GCC emits many of these as GNU_UNIQUE,
+        # which the dynamic linker deliberately shares across EVERY independently dlopen()'d copy
+        # of this library in a process, bypassing RTLD_LOCAL isolation entirely. The AI Manager
+        # plugin's reload path (nx_ai_manager_plugin/.../nxai_runtime.cpp) hard-links this .so to a
+        # fresh inode and dlopen()s it on every runtime reselect/reload; if a previous instance is
+        # still resident (e.g. not fully unmapped - see rule 3/addendum in
+        # shared-library-robustness-rules), the new instance's GNU_UNIQUE ORT internals - including
+        # its type registry - collide with the old one's, corrupting the new instance. Hidden
+        # visibility (+ -fno-gnu-unique) makes every internal symbol private per-DSO-copy; only the
+        # OAAX v2 API (marked EXPOSE_FUNCTION in runtime_core.hpp) stays exported.
+        set(CMAKE_BUILD_FLAGS "${CMAKE_BUILD_FLAGS} -fvisibility=hidden -fno-gnu-unique")
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wformat -Wformat-security -fdata-sections -ffunction-sections -Wl,--gc-sections")
         set(CMAKE_C_FLAGS " ${CMAKE_C_FLAGS} ${CMAKE_BUILD_FLAGS}  -D_GNU_SOURCE -I${CROSS_ROOT}/include")
-        set(CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS} ${CMAKE_BUILD_FLAGS}  -D_GNU_SOURCE -I${CROSS_ROOT}/include -fexceptions")
-        set(CMAKE_CPP_FLAGS " ${CMAKE_CPP_FLAGS} ${CMAKE_BUILD_FLAGS}  -D_GNU_SOURCE -I${CROSS_ROOT}/include -fexceptions")
+        set(CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS} ${CMAKE_BUILD_FLAGS}  -D_GNU_SOURCE -I${CROSS_ROOT}/include -fexceptions -fvisibility-inlines-hidden")
+        set(CMAKE_CPP_FLAGS " ${CMAKE_CPP_FLAGS} ${CMAKE_BUILD_FLAGS}  -D_GNU_SOURCE -I${CROSS_ROOT}/include -fexceptions -fvisibility-inlines-hidden")
 endif()
 
 # === Generic Build Settings ===
@@ -174,6 +201,11 @@ file(GLOB_RECURSE SRC
 
 # === Library Target ===
 # Create the shared library target for the runtime
+# On Windows the OAAX API functions are exported via the .def file (see runtime_core.hpp)
+if(MSVC)
+        list(APPEND SRC ${SRC_DIR}/runtime_exports.def)
+endif()
+
 add_library(RuntimeLibrary SHARED ${SRC})
 
 if(NOT MSVC)
@@ -385,7 +417,7 @@ if(MSVC)
         )
 else()
         if(CUDA_VERSION STREQUAL "13")
-                if(PLATFORM STREQUAL "AARCH64")
+                if(PLATFORM STREQUAL "AARCH64" OR PLATFORM STREQUAL "AARCH64_SBSA")
                         target_link_libraries(RuntimeLibrary PUBLIC
                                 -Wl,--start-group
 
@@ -628,16 +660,39 @@ else()
                 )
         endif()
 
+        # dlopen() (via c-utilities' lib_loader) loads the CUDA driver at
+        # runtime for hardware detection
+        target_link_libraries(RuntimeLibrary PRIVATE ${CMAKE_DL_LIBS})
+
+        # Restrict the dynamic symbol table to the OAAX v2 API (see runtime_exports.version):
+        # -fvisibility=hidden above only covers our own sources, not the prebuilt ORT/onnx/
+        # protobuf/abseil static libs linked in below, so their symbols still need to be hidden
+        # from the *final* .so's dynamic table at link time.
+        target_link_options(RuntimeLibrary PRIVATE
+                "-Wl,--version-script=${SRC_DIR}/runtime_exports.version"
+        )
+
+        # The prebuilt ORT libs (e.g. libonnxruntime_providers_cuda.so) ship with an
+        # absolute, build-machine-only RUNPATH baked in by ORT's own build (e.g.
+        # /opt/cudnn-...-archive/lib) instead of $ORIGIN, so their cuDNN dependency
+        # can't be found once the .so is deployed elsewhere. Rewrite it to $ORIGIN so
+        # it resolves against whatever bundles it (see INSTALL_RPATH below).
         add_custom_command(TARGET RuntimeLibrary POST_BUILD
                 COMMAND cp ${ONNX_RUNTIME_DIR}/${CUDA_BIN_FOLDER_NAME}/*.so ${CMAKE_BINARY_DIR}/bin/
+                COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/fix-provider-rpath.sh ${CMAKE_BINARY_DIR}/bin
         )
 endif()
 
-# Set custom output directories for the built target
+# Set custom output directories for the built target.
+# INSTALL_RPATH "$ORIGIN" tells the dynamic linker to search the directory
+# where libRuntimeLibrary.so lives for its dependencies (libonnxruntime.so,
+# libonnxruntime_providers_cuda.so, libonnxruntime_providers_shared.so).
 set_target_properties(RuntimeLibrary PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
         LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
         ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+        INSTALL_RPATH             "$ORIGIN"
+        BUILD_WITH_INSTALL_RPATH  TRUE
 )
 
 # == Copy Windows runtime libraries == #

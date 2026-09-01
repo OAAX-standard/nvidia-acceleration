@@ -11,19 +11,25 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-runtimes:
     timeout-minutes: 60
     runs-on: hetzner-runner
     container:
       image: ubuntu:22.04
+      options: >-
+        --volume ${{ vars.NVIDIA_DEPS_DIR }}:${{ vars.NVIDIA_DEPS_DIR }}
 
     steps:
       - name: Set up environment
         run: |
           export DEBIAN_FRONTEND=noninteractive
           apt-get update
-          apt-get install -y git git-lfs wget curl build-essential cmake s3cmd xz-utils
+          apt-get install -y git git-lfs wget curl build-essential cmake s3cmd xz-utils patchelf
           git lfs install
 
       - name: Checkout
@@ -32,6 +38,11 @@ jobs:
           fetch-depth: 1
           submodules: recursive
           lfs: true
+
+      - name: Link pre-cached cuDNN
+        run: |
+          mkdir -p .deps
+          ln -fs ${{ vars.NVIDIA_DEPS_DIR }}/cudnn .deps/cudnn
 
       - name: Determine version
         run: |
@@ -50,6 +61,7 @@ jobs:
             "https://oaax.nbg1.your-objectstorage.com/toolchains/x86-64-v2--glibc--stable-2022.08-1.tar.bz2"
             "https://oaax.nbg1.your-objectstorage.com/toolchains/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu.tar.gz"
             "https://oaax.nbg1.your-objectstorage.com/toolchains/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu.tar.xz"
+            "https://developer.arm.com/-/media/Files/downloads/gnu/13.2.rel1/binrel/arm-gnu-toolchain-13.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz"
           )
           for url in "${toolchains[@]}"; do
             filename="${url##*/}"
@@ -76,6 +88,19 @@ jobs:
 
       - name: Upload runtimes to S3
         run: |
+          s3cmd_retry() {
+            local attempt
+            for attempt in 1 2 3; do
+              if s3cmd "$@"; then
+                return 0
+              fi
+              echo "s3cmd $1 failed (attempt $attempt/3), retrying..." >&2
+              sleep $((10 * attempt))
+            done
+            echo "s3cmd $* failed after 3 attempts" >&2
+            return 1
+          }
+
           version=${{ env.version }}
           for archive in onnxruntime/runtime-library/artifacts/runtime-library-*.tar.gz; do
             # archive name: runtime-library-<PLATFORM>-cuda_<N>.tar.gz
@@ -83,15 +108,16 @@ jobs:
             platform=$(echo "$name" | cut -d- -f3)            # X86_64
             cuda=$(echo "$name" | cut -d- -f4 | cut -d_ -f2)  # 12
             case "$platform" in
-              X86_64)  arch="x86_64" ;;
-              AARCH64) arch="aarch64" ;;
+              X86_64)       arch="x86_64" ;;
+              AARCH64)      arch="aarch64-jetson" ;;
+              AARCH64_SBSA) arch="aarch64-sbsa" ;;
             esac
-            s3cmd put "$archive" \
-              "s3://oaax/runtimes/${version}/NVIDIA_ORT/${arch}/Ubuntu/library-cuda_${cuda}.tar.gz"
+            s3cmd_retry put "$archive" \
+              "s3://oaax/runtimes/${version}/NVIDIA_ORT/${arch}/Ubuntu/library-cuda_${cuda}.tar.gz" || exit 1
           done
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            s3cmd sync "s3://oaax/runtimes/${version}/NVIDIA_ORT/" \
-                       "s3://oaax/runtimes/latest/NVIDIA_ORT/"
+            s3cmd_retry sync "s3://oaax/runtimes/${version}/NVIDIA_ORT/" \
+                       "s3://oaax/runtimes/latest/NVIDIA_ORT/" || exit 1
           fi
 
   build-runtime-windows-x86_64:
@@ -105,6 +131,12 @@ jobs:
           fetch-depth: 1
           submodules: recursive
           lfs: true
+
+      - name: Cache cuDNN downloads
+        uses: actions/cache@v4
+        with:
+          path: .deps\cudnn
+          key: cudnn-windows-${{ hashFiles('scripts/download-cudnn.sh') }}
 
       - name: Compile runtime
         run: |
@@ -143,13 +175,28 @@ jobs:
           $env:AWS_ACCESS_KEY_ID = "${{ secrets.S3_ACCESS_KEY }}"
           $env:AWS_SECRET_ACCESS_KEY = "${{ secrets.S3_SECRET_KEY }}"
 
+          function Invoke-S5cmdRetry {
+            param([string[]]$CmdArgs)
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+              s5cmd --endpoint-url "https://${{ secrets.S3_ENDPOINT_URL }}" @CmdArgs
+              if ($LASTEXITCODE -eq 0) { return }
+              Write-Warning "s5cmd $($CmdArgs[0]) failed (attempt $attempt/3, exit $LASTEXITCODE), retrying..."
+              Start-Sleep -Seconds (10 * $attempt)
+            }
+            throw "s5cmd failed after 3 attempts: $($CmdArgs -join ' ')"
+          }
+
           foreach ($cuda in @("11", "12", "13")) {
-            s5cmd --endpoint-url "https://${{ secrets.S3_ENDPOINT_URL }}" cp `
-              "$localFolder\runtime-library-X86_64-Windows-cuda_$cuda.tar.gz" `
+            Invoke-S5cmdRetry -CmdArgs @(
+              "cp",
+              "$localFolder\runtime-library-X86_64-Windows-cuda_$cuda.tar.gz",
               "s3://oaax/runtimes/$version/NVIDIA_ORT/x86_64/Windows/library-cuda_$cuda.tar.gz"
+            )
           }
           if ("${{ github.ref }}" -eq "refs/heads/main") {
-            s5cmd --endpoint-url "https://${{ secrets.S3_ENDPOINT_URL }}" sync `
-              "s3://oaax/runtimes/$version/NVIDIA_ORT/" `
+            Invoke-S5cmdRetry -CmdArgs @(
+              "sync",
+              "s3://oaax/runtimes/$version/NVIDIA_ORT/",
               "s3://oaax/runtimes/latest/NVIDIA_ORT/"
+            )
           }

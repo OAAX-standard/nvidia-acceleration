@@ -51,6 +51,10 @@ def run_for_backend(backend_name: str, smoke_only: bool) -> None:
     header(f"Step 3: YOLO 320×320 ({label})")
     run_pytest("tests/test_yolo.py", "-k", f"TestYoloConversion320 and {backend_name}")
 
+    if backend_name == "trt":
+        header("Step 4: yolov8n INT8 (TRT)")
+        run_pytest("tests/test_yolo.py", "-k", "TestYoloInt8")
+
     print(f"\nStage 1 ({label}) complete — models saved to tests/compiled_models/{backend_name}/")
 
 

@@ -14,41 +14,46 @@ VERSION=$(<"$VERSION_FILE")
 
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 
-# Full build matrix: "PLATFORM:CUDA_VERSION:march"
+# Full build matrix: "PLATFORM:CUDA_VERSION:TRT_VERSION:march"
 # One march per platform — inference runs on GPU so CPU micro-arch tuning is unnecessary.
-# AARCH64_JETSON (Jetson): CUDA 12 only — no linux-aarch64 in CUDA 13 redistrib.
-# AARCH64_SBSA (DGX Spark/Grace): CUDA 12 and 13 both have SBSA TRT packages.
+# AARCH64_JETSON (Jetson): TRT 10 + CUDA 12 only — JetPack does not ship TRT 11.
+# AARCH64_SBSA (DGX Spark/Grace): TRT 10 (CUDA 12+13), TRT 11 (CUDA 13 only — no SBSA/CUDA 12 archive).
 MATRIX=(
-    "X86_64:12:x86-64"
-    "X86_64:13:x86-64"
-    "AARCH64_JETSON:12:armv8-a"
-    "AARCH64_SBSA:12:armv8-a"
-    "AARCH64_SBSA:13:armv8-a"
+    # TRT 10
+    "X86_64:12:10:x86-64"
+    "X86_64:13:10:x86-64"
+    "AARCH64_JETSON:12:10:armv8-a"
+    "AARCH64_SBSA:12:10:armv8-a"
+    "AARCH64_SBSA:13:10:armv8-a"
+    # TRT 11
+    "X86_64:12:11:x86-64"
+    "X86_64:13:11:x86-64"
+    "AARCH64_SBSA:13:11:armv8-a"
 )
 
-# If PLATFORM or CUDA_VERSION is unset, iterate over the matrix.
-if [ -z "$PLATFORM" ] || [ -z "$CUDA_VERSION" ]; then
+# If PLATFORM, CUDA_VERSION, or TRT_VERSION is unset, iterate over the matrix.
+if [ -z "$PLATFORM" ] || [ -z "$CUDA_VERSION" ] || [ -z "$TRT_VERSION" ]; then
     for entry in "${MATRIX[@]}"; do
         plat="${entry%%:*}"; rest="${entry#*:}"
-        cuda="${rest%%:*}"; marches="${rest#*:}"
-        [ -n "$PLATFORM" ] && [ "$PLATFORM" != "$plat" ] && continue
+        cuda="${rest%%:*}"; rest="${rest#*:}"
+        trt="${rest%%:*}";  march="${rest#*:}"
+        [ -n "$PLATFORM" ]    && [ "$PLATFORM"    != "$plat" ] && continue
         [ -n "$CUDA_VERSION" ] && [ "$CUDA_VERSION" != "$cuda" ] && continue
-        for march in $marches; do
-            PLATFORM=$plat CUDA_VERSION=$cuda MARCH=$march bash "$SCRIPT_PATH"
-        done
+        [ -n "$TRT_VERSION" ]  && [ "$TRT_VERSION"  != "$trt"  ] && continue
+        PLATFORM=$plat CUDA_VERSION=$cuda TRT_VERSION=$trt MARCH=$march bash "$SCRIPT_PATH"
     done
     exit 0
 fi
 
-# Default TRT_DIR from .deps/tensorrt/ based on CUDA_VERSION and PLATFORM
+# Default TRT_DIR from .deps/tensorrt/ based on TRT_VERSION, CUDA_VERSION and PLATFORM
 if [ -z "$TRT_DIR" ]; then
-    if [ -n "$CUDA_VERSION" ]; then
+    if [ -n "$TRT_VERSION" ] && [ -n "$CUDA_VERSION" ]; then
         case "$PLATFORM" in
-            X86_64)             trt_platform="x86_64" ;;
-            AARCH64_JETSON)  trt_platform="aarch64-linux" ;;
-            AARCH64_SBSA)  trt_platform="sbsa-linux" ;;
+            X86_64)         trt_platform="x86_64" ;;
+            AARCH64_JETSON) trt_platform="aarch64-linux" ;;
+            AARCH64_SBSA)   trt_platform="sbsa-linux" ;;
         esac
-        TRT_DIR="${DEPS_DIR}/tensorrt/cuda-${CUDA_VERSION}/${trt_platform}"
+        TRT_DIR="${DEPS_DIR}/tensorrt/trt${TRT_VERSION}/cuda-${CUDA_VERSION}/${trt_platform}"
     fi
 fi
 
@@ -56,11 +61,10 @@ if [ -z "$TRT_DIR" ]; then
     echo "Error: TRT_DIR is not set."
     echo ""
     echo "  TRT_DIR must point to an extracted TensorRT archive (contains include/ and lib/)."
-    echo "  Download the Linux tar.gz for your platform from the NVIDIA developer portal:"
-    echo "    https://developer.nvidia.com/tensorrt"
+    echo "  Run scripts/unpack-trt.sh to extract archives into .deps/tensorrt/, or set TRT_DIR manually."
     echo ""
     echo "  Example:"
-    echo "    TRT_DIR=.deps/tensorrt/cuda-12/x86_64 PLATFORM=X86_64 CUDA_VERSION=12 ./build-runtimes.sh"
+    echo "    TRT_DIR=.deps/tensorrt/trt10/cuda-12/x86_64 PLATFORM=X86_64 CUDA_VERSION=12 TRT_VERSION=10 ./build-runtimes.sh"
     exit 1
 fi
 
@@ -118,11 +122,11 @@ if [ -n "$MARCH" ]; then
     MARCH_CMAKE_ARG="-DMARCH=${MARCH}"
 fi
 
-ARTIFACT="library-cuda_${CUDA_VERSION}"
+ARTIFACT="library-trt${TRT_VERSION}-cuda_${CUDA_VERSION}"
 BUILD_DIR="build/NVIDIA_TENSORRT/${arch}/Ubuntu/${ubuntu_version}/${ARTIFACT}"
 
 echo "Building: PLATFORM=$PLATFORM  VERSION=$VERSION  BUILD_TYPE=$BUILD_TYPE"
-echo "          CUDA_VERSION=$CUDA_VERSION  MARCH=${MARCH:-<default>}"
+echo "          TRT_VERSION=$TRT_VERSION  CUDA_VERSION=$CUDA_VERSION  MARCH=${MARCH:-<default>}"
 echo "          TRT_DIR=$TRT_DIR"
 echo "          CUDA_DIR=$CUDA_DIR"
 echo "          Ubuntu: ${ubuntu_version}  Output: tensorrt/runtime-library/${BUILD_DIR}.tar.gz"

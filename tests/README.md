@@ -44,11 +44,11 @@ Converted models are cached — re-running stage1 skips models that already exis
 
 ## Stage 2 — Benchmarking
 
-Benchmarks compiled models using the OAAX runtime library. Requires stage1 to have run first.
+Benchmarks compiled models using the OAAX v2 runtime library. Requires stage1 to have run first.
 
 ```bash
 uv run python -m tests.stage2 --backend trt \
-  --runtime-lib tensorrt/runtime-library/build/NVIDIA_TENSORRT/x86_64/Ubuntu/22.04/library-cuda_12/bin/libRuntimeLibrary.so
+  --runtime-lib tensorrt/runtime-library/build/NVIDIA_TENSORRT/x86_64/Ubuntu/22.04/library-cuda_13/bin/libRuntimeLibrary.so
 
 uv run python -m tests.stage2 --backend ort \
   --runtime-lib onnxruntime/runtime-library/build/bin/libRuntimeLibrary.so
@@ -68,6 +68,45 @@ The `inference_test` binary is built automatically on first run from `tests/runt
 | `--csv PATH` | — | Write results to a CSV file |
 | `--skip-build` | off | Skip rebuilding `inference_test` |
 | `--log-level N` | `3` | Runtime log verbosity (0 = silent, 4 = trace) |
+
+---
+
+## Testing the ORT runtime on Windows
+
+Everything below runs directly on a Windows machine with an NVIDIA GPU and a matching
+CUDA Toolkit install — no Docker/Python required. Use an **x64 Native Tools Command
+Prompt for VS** (the plain Developer Command Prompt defaults to x86 and produces a
+32-bit exe that fails to load the DLL).
+
+```bat
+REM 1. Build the runtime DLLs (CUDA 11/12/13, all three by default)
+cd onnxruntime\runtime-library
+.\build-runtimes.bat
+REM DLLs land in build\bin\Release\ (last CUDA version built) and artifacts\Windows\cuda_<N>\
+
+REM 2. Run the no-GPU load/dependency diagnostic first
+cd ..\..\tests\runtime
+cl /W4 windows_load_test.c
+.\windows_load_test.exe ..\..\onnxruntime\runtime-library\artifacts\Windows\cuda_12\RuntimeLibrary.dll --init --cuda-version 12
+
+REM 3. Build the C++ smoke/benchmark tests and run a real inference round-trip
+.\build-tests.bat
+cd build\Release
+.\simple_test.exe ..\..\..\compiled_models\onnx\yolov8n.onnx
+.\inference_test.exe ..\..\..\compiled_models\onnx\yolov8n.onnx --input-name images --input-shape 1,3,640,640
+.\robustness_test.exe ..\..\..\compiled_models\onnx\yolov8n.onnx
+```
+
+`windows_load_test.c` checks PE bitness, that bundled MSVC/ORT DLLs resolve from the
+runtime's own folder, that the (unbundled) CUDA Toolkit DLLs resolve from PATH, CWD
+writability, all nine OAAX v2 exports, and an init/cleanup round-trip — see the file
+header for details. `yolov8n.onnx` under `compiled_models/onnx/` needs no conversion
+step for the ORT backend (unlike TRT, ORT compiles the graph at `runtime_init` time).
+
+Always pass a model path to `robustness_test`: without one, `model_states`/`output_names`
+stay empty for the whole run and its strongest check (load → cleanup → re-init → reload,
+covering the `get_output_names()` ORT-allocator/`free()` mismatch that crashed
+`mediaserver.exe`) never actually executes.
 
 ---
 

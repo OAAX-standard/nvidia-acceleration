@@ -139,13 +139,6 @@ FetchContent_Declare(concurrentqueue
     GIT_SHALLOW    TRUE)
 FetchContent_MakeAvailable(concurrentqueue)
 
-# tools repo contains c-utilities as a subdirectory
-FetchContent_Declare(tools
-    GIT_REPOSITORY https://github.com/OAAX-standard/tools
-    GIT_TAG        main
-    GIT_SHALLOW    TRUE
-    SOURCE_SUBDIR  c-utilities)
-FetchContent_MakeAvailable(tools)
 
 # === Library Target ===
 file(GLOB_RECURSE SRC
@@ -186,13 +179,17 @@ target_link_directories(RuntimeLibrary PUBLIC
     ${CUDA_LIB_DIR})
 
 # === Link Libraries ===
+# nvinfer_plugin was merged into nvinfer in TRT 10.x; link it only when present.
+if(EXISTS "${TRT_LIB_DIR}/libnvinfer_plugin.so")
+    set(TRT_PLUGIN_LIB nvinfer_plugin)
+endif()
+
 target_link_libraries(RuntimeLibrary PUBLIC
     -Wl,--start-group
     nvinfer
-    nvinfer_plugin
+    ${TRT_PLUGIN_LIB}
     cudart
     spdlog::spdlog
-    c_utilities
     stdc++
     -Wl,--end-group)
 
@@ -213,18 +210,18 @@ set_target_properties(RuntimeLibrary PROPERTIES
 # Only bundle libcudart for aarch64 cross-builds.
 if(PLATFORM STREQUAL "AARCH64_JETSON")
     add_custom_command(TARGET RuntimeLibrary POST_BUILD
-        COMMAND bash -c
-            "cp -P ${CUDA_LIB_DIR}/libcudart.so* \
-                   $<TARGET_FILE_DIR:RuntimeLibrary>/"
+        COMMAND bash -c "cp -P ${CUDA_LIB_DIR}/libcudart.so* $<TARGET_FILE_DIR:RuntimeLibrary>/"
         COMMENT "Bundling CUDA libs into bin/ (TRT provided by JetPack on target)"
+    )
+elseif(DEFINED TRT_PLUGIN_LIB)
+    # nvinfer_plugin ships separately in some TRT releases; include it when present.
+    add_custom_command(TARGET RuntimeLibrary POST_BUILD
+        COMMAND bash -c "cp -P ${TRT_LIB_DIR}/libnvinfer_plugin.so* ${TRT_LIB_DIR}/libnvinfer.so* ${CUDA_LIB_DIR}/libcudart.so* $<TARGET_FILE_DIR:RuntimeLibrary>/"
+        COMMENT "Bundling TRT and CUDA libs into bin/"
     )
 else()
     add_custom_command(TARGET RuntimeLibrary POST_BUILD
-        COMMAND bash -c
-            "cp -P ${TRT_LIB_DIR}/libnvinfer.so* \
-                   ${TRT_LIB_DIR}/libnvinfer_plugin.so* \
-                   ${CUDA_LIB_DIR}/libcudart.so* \
-                   $<TARGET_FILE_DIR:RuntimeLibrary>/"
+        COMMAND bash -c "cp -P ${TRT_LIB_DIR}/libnvinfer.so* ${CUDA_LIB_DIR}/libcudart.so* $<TARGET_FILE_DIR:RuntimeLibrary>/"
         COMMENT "Bundling TRT and CUDA libs into bin/"
     )
 endif()

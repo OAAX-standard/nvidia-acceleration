@@ -4,6 +4,23 @@ All notable changes to this project are documented here. Versions are listed new
 
 ---
 
+## Unreleased
+
+### Fixed
+- ORT runtime builds again on Linux and Windows: C++17 is now set explicitly, and hardware detection uses the CUDA driver API (`nvcuda.dll` / `libcuda.so.1`) loaded dynamically — no CUDA headers/libs needed at build time, no hard CUDA dependency at load time, no CUDA context created (and no GPU memory reserved) during `runtime_init`
+- MSVC compile error on the OAAX API exports: functions are now exported via a `.def` file instead of `__declspec(dllexport)` (conflicted with the plain declarations in `interface.h`)
+- Runtime no longer terminates the host process when the log file cannot be created (e.g. Windows services with an unwritable working directory); it falls back to console-only logging with an unconditional console notice
+- On Windows the default log file is created in the temp directory with a per-process name instead of `runtime.log` in the working directory
+- Crash of the host process at exit (static destruction of the ONNX Runtime environment, inference threads, and async logger); process-lifetime globals are now intentionally leaked and released only by `runtime_cleanup()`
+- C++ exceptions can no longer escape the OAAX C API boundary or the inference thread (including non-numeric config values, which now return an error status)
+- A failed `runtime_init` no longer leaks settings into the next attempt, and `runtime_cleanup` resets all state even if model teardown fails
+- `build-runtimes.bat` now propagates build failures, so the Windows CI job fails at the compile step instead of at artifact upload
+
+### Added
+- `tests/runtime/robustness_test.cpp` covering the failure modes above
+
+---
+
 ## 1.4.0 — 2026-05-14
 
 ### Added

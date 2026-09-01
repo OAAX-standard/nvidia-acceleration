@@ -39,10 +39,10 @@ if not defined RUNTIME_VERSION (
 )
 echo Building runtime version: %RUNTIME_VERSION%
 
-REM Call the function with the desired CUDA version
-call :build_runtime 11
-call :build_runtime 12
-call :build_runtime 13
+REM Build for each supported CUDA version.
+REM A failed build must fail the whole script (otherwise CI shows the compile
+REM step green and only fails later when the artifacts are missing).
+for %%v in (11 12 13) do call :build_runtime %%v || exit /b 1
 REM End local environment changes
 endlocal
 goto :eof
@@ -93,12 +93,35 @@ if not exist "%ARTIFACTS_DIR%\Windows\cuda_%cuda_version%" mkdir "%ARTIFACTS_DIR
 
 REM Copy all DLLs from Release to the artifacts Windows directory
 copy bin\Release\*.dll "%ARTIFACTS_DIR%\Windows\cuda_%cuda_version%\"
+if errorlevel 1 exit /b 1
+
+REM Fetch and bundle cuDNN so the package doesn't depend on a system-wide
+REM cuDNN install. Not every CUDA version has a pinned package -- those are
+REM skipped with a warning, not a failure. Uses Git Bash (bash.exe), which
+REM ships on GitHub's windows-latest runners and any dev box with Git installed.
+bash "%ROOT_DIR%/scripts/download-cudnn.sh" WINDOWS %cuda_version% --output "%ROOT_DIR%/.deps/cudnn"
+if errorlevel 1 exit /b 1
+
+REM cuDNN's Windows packaging is inconsistent across versions: cuDNN 8.9's
+REM archive has DLLs flat under bin\, cuDNN 9.25's has them under bin\x64\.
+REM Search recursively so both layouts are handled.
+set "CUDNN_BIN_DIR=%ROOT_DIR%\.deps\cudnn\WINDOWS\%cuda_version%\bin"
+if exist "%CUDNN_BIN_DIR%" (
+	echo Bundling cuDNN DLLs from "%CUDNN_BIN_DIR%"...
+	for /r "%CUDNN_BIN_DIR%" %%F in (*.dll) do (
+		copy "%%F" "%ARTIFACTS_DIR%\Windows\cuda_%cuda_version%\"
+		if errorlevel 1 exit /b 1
+	)
+) else (
+	echo WARNING: no cuDNN DLLs bundled for cuda_%cuda_version%
+)
 
 REM Change to the artifacts Windows directory
 pushd "%ARTIFACTS_DIR%\Windows\cuda_%cuda_version%"
 
 REM Create a gzipped tarball of the DLLs in the Windows artifacts directory
 tar czf "%ARTIFACTS_DIR%\runtime-library-X86_64-Windows-cuda_%cuda_version%.tar.gz" *.dll
+if errorlevel 1 exit /b 1
 
 REM Print confirmation message
 echo Shared libraries for Windows have been copied to "%ARTIFACTS_DIR%\Windows\cuda_%cuda_version%"
