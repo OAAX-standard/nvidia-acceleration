@@ -679,7 +679,7 @@ else()
         # it resolves against whatever bundles it (see INSTALL_RPATH below).
         add_custom_command(TARGET RuntimeLibrary POST_BUILD
                 COMMAND cp ${ONNX_RUNTIME_DIR}/${CUDA_BIN_FOLDER_NAME}/*.so ${CMAKE_BINARY_DIR}/bin/
-                COMMAND bash -c "patchelf --set-rpath '$ORIGIN' ${CMAKE_BINARY_DIR}/bin/*.so"
+                COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/fix-provider-rpath.sh ${CMAKE_BINARY_DIR}/bin
         )
 endif()
 
