@@ -7,7 +7,7 @@ Requirements:
   - Docker
   - TRT backend: oaax-nvidia-tensorrt-toolchain image + GPU
   - ORT backend: oaax-nvidia-toolchain image (or set NVIDIA_ORT_TOOLCHAIN_IMAGE)
-  - ultralytics (uv sync --group dev)  ← for YOLO models
+  - uv sync --group dev  ← test dependencies (torchvision for MobileNetV2)
 
 Usage:
     python -m tests.stage1                       # both backends
@@ -45,15 +45,12 @@ def run_for_backend(backend_name: str, smoke_only: bool) -> None:
         print(f"\nStage 1 ({label}) complete (smoke only)")
         return
 
-    header(f"Step 2: YOLO 640×640 ({label})")
-    run_pytest("tests/test_yolo.py", "-k", f"TestYoloConversion640 and {backend_name}")
-
-    header(f"Step 3: YOLO 320×320 ({label})")
-    run_pytest("tests/test_yolo.py", "-k", f"TestYoloConversion320 and {backend_name}")
+    header(f"Step 2: YOLOX + MobileNetV2 ({label})")
+    run_pytest("tests/test_yolox.py", "-k", f"(TestModelConversion or TestYoloxConversion) and {backend_name}")
 
     if backend_name == "trt":
-        header("Step 4: yolov8n INT8 (TRT)")
-        run_pytest("tests/test_yolo.py", "-k", "TestYoloInt8")
+        header("Step 3: yolox_nano INT8 (TRT)")
+        run_pytest("tests/test_yolox.py", "-k", "TestYoloxInt8")
 
     print(f"\nStage 1 ({label}) complete — models saved to tests/compiled_models/{backend_name}/")
 

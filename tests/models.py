@@ -1,90 +1,95 @@
 """
 Model download and ONNX export utilities for the NVIDIA OAAX test suite.
 
-Requires: ultralytics (YOLO), torchvision (MobileNetV2)
+Detection models are Apache-2.0 YOLOX ONNX exports (pinned, sha256-verified);
+MobileNetV2 is exported from torchvision (BSD).
 Install:  uv sync --group dev
 """
 
+import hashlib
 import os
-import shutil
+import urllib.request
 
 
 # Input name + shape for each model — used by stage2 benchmarking.
 MODEL_INPUT_CONFIGS: dict[str, tuple[str, str]] = {
-    "yolov8n":      ("images", "1,3,640,640"),
-    "yolov8n_int8": ("images", "1,3,640,640"),
-    "yolo11n":      ("images", "1,3,640,640"),
-    "yolo11s":      ("images", "1,3,640,640"),
-    "yolo11n_320":  ("images", "1,3,320,320"),
-    "yolo11s_320":  ("images", "1,3,320,320"),
-    "mobilenetv2":  ("input",  "1,3,224,224"),
+    "yolox_nano":      ("images", "1,3,416,416"),
+    "yolox_nano_int8": ("images", "1,3,416,416"),
+    "yolox_tiny":      ("images", "1,3,416,416"),
+    "yolox_s":         ("images", "1,3,640,640"),
+    "mobilenetv2":     ("input",  "1,3,224,224"),
 }
 
-# Well-known local COCO128 cache populated by the intel-acceleration project.
-_COCO128_DEFAULT = "/home/ayoub/intel-acceleration/tests/compiled_models/calibration/coco128/images/train2017"
+# Official YOLOX release assets (Apache-2.0): name -> sha256.
+_YOLOX_URL = "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/{}.onnx"
+_YOLOX_SHA256 = {
+    "yolox_nano": "c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d",
+    "yolox_tiny": "427cc366d34e27ff7a03e2899b5e3671425c262ea2291f88bb942bc1cc70b0f7",
+    "yolox_s":    "c5c2d13e59ae883e6af3b45daea64af4833a4951c92d116ec270d9ddbe998063",
+}
 
 
-def get_calibration_images(calib_dir: str | None = None) -> list[str]:
-    """Return a sorted list of JPEG paths suitable for INT8 calibration.
+def get_calibration_images(calib_dir: str | None = None, n: int = 50, size: int = 416) -> list[str]:
+    """Return JPEG paths for INT8 calibration.
 
-    Falls back to downloading COCO128 via ultralytics if the preferred cache
-    directory doesn't exist or is empty.
+    Uses real images from `calib_dir` (or $OAAX_CALIB_DIR) when set; otherwise
+    generates deterministic synthetic images, which is enough to exercise the
+    calibration pipeline but not to produce an accurate INT8 model.
     """
     import glob
-
-    source = calib_dir or _COCO128_DEFAULT
-    images = sorted(glob.glob(os.path.join(source, "*.jpg")))
-    if images:
-        return images
-
-    # Download coco128 via ultralytics as fallback
-    from ultralytics.utils.downloads import download
     import tempfile
 
-    dl_dir = os.path.join(tempfile.gettempdir(), "coco128_calib")
-    download("https://ultralytics.com/assets/coco128.zip", dir=dl_dir)
-    images = sorted(glob.glob(os.path.join(dl_dir, "coco128", "images", "train2017", "*.jpg")))
-    if not images:
-        raise FileNotFoundError(f"No calibration images found (tried {source} and download fallback)")
-    return images
+    source = calib_dir or os.environ.get("OAAX_CALIB_DIR")
+    if source:
+        images = sorted(glob.glob(os.path.join(source, "*.jpg")))
+        if not images:
+            raise FileNotFoundError(f"No .jpg calibration images in {source}")
+        return images
 
-_YOLO_EXPORT_CONFIGS: dict[str, dict] = {
-    "yolov8n":     {"model": "yolov8n.pt",  "imgsz": 640, "batch": 1},
-    "yolo11n":     {"model": "yolo11n.pt",  "imgsz": 640, "batch": 1},
-    "yolo11s":     {"model": "yolo11s.pt",  "imgsz": 640, "batch": 1},
-    "yolo11n_320": {"model": "yolo11n.pt",  "imgsz": 320, "batch": 1},
-    "yolo11s_320": {"model": "yolo11s.pt",  "imgsz": 320, "batch": 1},
-}
+    import numpy as np
+    from PIL import Image
+
+    out_dir = os.path.join(tempfile.gettempdir(), f"oaax_calib_{size}")
+    os.makedirs(out_dir, exist_ok=True)
+    rng = np.random.default_rng(0)
+    paths = []
+    for i in range(n):
+        path = os.path.join(out_dir, f"synthetic_{i:03d}.jpg")
+        if not os.path.exists(path):
+            pixels = rng.integers(0, 256, (size, size, 3), dtype=np.uint8)
+            Image.fromarray(pixels).save(path, quality=90)
+        paths.append(path)
+    return paths
 
 
 def download_model(model_name: str, onnx_dir: str) -> str:
-    """Export a model to ONNX and return the path to the .onnx file."""
-    if model_name in _YOLO_EXPORT_CONFIGS:
-        return _export_yolo(model_name, onnx_dir)
+    """Fetch/export a model as ONNX and return the path to the .onnx file."""
+    if model_name in _YOLOX_SHA256:
+        return _download_yolox(model_name, onnx_dir)
     if model_name == "mobilenetv2":
         return _export_mobilenetv2(onnx_dir)
     raise ValueError(f"Unknown model: {model_name!r}")
 
 
-def _export_yolo(model_name: str, onnx_dir: str) -> str:
-    from ultralytics import YOLO
+def _sha256(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
-    cfg = _YOLO_EXPORT_CONFIGS[model_name]
+
+def _download_yolox(model_name: str, onnx_dir: str) -> str:
     onnx_path = os.path.join(onnx_dir, f"{model_name}.onnx")
-    if os.path.exists(onnx_path):
+    expected = _YOLOX_SHA256[model_name]
+    if os.path.exists(onnx_path) and _sha256(onnx_path) == expected:
         return onnx_path
 
-    model = YOLO(cfg["model"])
-    exported = model.export(
-        format="onnx",
-        imgsz=cfg["imgsz"],
-        batch=cfg["batch"],
-        dynamic=False,
-        opset=12,
-    )
-    if str(exported) != onnx_path:
-        os.makedirs(onnx_dir, exist_ok=True)
-        shutil.move(str(exported), onnx_path)
+    os.makedirs(onnx_dir, exist_ok=True)
+    urllib.request.urlretrieve(_YOLOX_URL.format(model_name), onnx_path)
+    if _sha256(onnx_path) != expected:
+        os.remove(onnx_path)
+        raise RuntimeError(f"sha256 mismatch for downloaded {model_name}.onnx")
     return onnx_path
 
 

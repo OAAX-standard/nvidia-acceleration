@@ -23,7 +23,7 @@ Tested on Ubuntu 20.04+ (x86_64 and aarch64). Docker is required for the convers
 uv sync --group dev
 ```
 
-This installs `pytest`, `ultralytics`, `onnx`, and `torchvision` into a local `.venv`.
+This installs `pytest`, `onnx`, `torch`, `torchvision`, `numpy`, and `pillow` into a local `.venv`.
 
 ### Runtime library
 
@@ -33,7 +33,7 @@ Build dependencies (TensorRT, CUDA toolchains) are set up via:
 sudo bash scripts/setup-env.sh
 ```
 
-See `tensorrt/runtime-library/README.md` and `onnxruntime/runtime-library/` for backend-specific build instructions.
+See `tensorrt/runtime-library/README.md` and `onnxruntime/runtime-library/README.md` for backend-specific build instructions.
 
 ### Running tests
 
