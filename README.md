@@ -19,8 +19,7 @@ nvidia-acceleration/
 ├── onnxruntime/
 │   ├── conversion-toolchain/   # Simplifies ONNX for ORT+CUDA (no GPU needed)
 │   └── runtime-library/        # Runs simplified ONNX via ORT+CUDA EP
-├── scripts/
-│   └── setup-env.sh            # Dev machine setup: toolchains, TRT/CUDA archives
+├── scripts/                    # setup-env.sh (toolchains, TRT/CUDA), download-cuda/cudnn.sh, build-in-docker.sh
 └── tests/                      # Stage1 (conversion) + Stage2 (benchmark) test suite
 ```
 
@@ -34,7 +33,7 @@ nvidia-acceleration/
 | `AARCH64_JETSON` | Linux aarch64 | Jetson (JetPack 7.0+) |
 | `AARCH64_SBSA` | Linux aarch64 | DGX Spark, Grace-Hopper, Grace-based servers |
 
-Windows x86_64 is supported by the ORT backend only.
+Windows x86_64 is supported by the ORT backend only. Runtime packages are built per CUDA major version and, for TensorRT, per TRT major version (10/11). The ORT backend names its aarch64 Jetson platform `AARCH64` (CUDA 11/12/13) and builds `AARCH64_SBSA` for CUDA 13 only.
 
 ---
 
@@ -145,7 +144,7 @@ docker run --rm \
 
 **2. Run inference** — same OAAX v2 C API, pointing at the simplified `.onnx` file.
 
-See [`onnxruntime/conversion-toolchain/README.md`](onnxruntime/conversion-toolchain/README.md) for full details.
+See [`onnxruntime/conversion-toolchain/README.md`](onnxruntime/conversion-toolchain/README.md) and [`onnxruntime/runtime-library/README.md`](onnxruntime/runtime-library/README.md) for full details.
 
 ---
 
@@ -153,7 +152,6 @@ See [`onnxruntime/conversion-toolchain/README.md`](onnxruntime/conversion-toolch
 
 | Tool | Location | Description |
 |---|---|---|
-| System scanner | [`system-scanner/`](system-scanner/) | Checks runtime support and identifies the correct tarball for the target machine |
 | Test suite | [`tests/`](tests/README.md) | Stage1 (model conversion) + Stage2 (benchmark) for both backends |
 
 ---

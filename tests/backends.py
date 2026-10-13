@@ -19,6 +19,8 @@ from pathlib import Path
 
 TESTS_DIR = Path(__file__).parent
 ARTIFACTS_DIR = TESTS_DIR / "artifacts"
+# Toolchain images are tagged with the repo VERSION by their build-toolchain.sh.
+VERSION = (TESTS_DIR.parent / "VERSION").read_text().strip()
 
 
 @dataclass
@@ -158,7 +160,7 @@ class _OrtBackend(Backend):
 TRT = _TrtBackend(
     name="trt",
     docker_image_env="NVIDIA_TRT_TOOLCHAIN_IMAGE",
-    default_image="oaax-nvidia-tensorrt-toolchain:1.4.0",
+    default_image=f"oaax-nvidia-tensorrt-toolchain:{VERSION}",
     gpu_required=True,
     output_filename="model.trt",
     min_output_bytes=1024 * 1024,
@@ -170,7 +172,7 @@ TRT = _TrtBackend(
 ORT = _OrtBackend(
     name="ort",
     docker_image_env="NVIDIA_ORT_TOOLCHAIN_IMAGE",
-    default_image="oaax-nvidia-toolchain:1.3.0",
+    default_image=f"oaax-nvidia-toolchain:{VERSION}",
     gpu_required=False,
     output_filename="model.onnx",
     min_output_bytes=1024 * 100,
@@ -183,7 +185,7 @@ TRT_INT8 = _TrtInt8Backend(
     calib_n=50,
     name="trt_int8",
     docker_image_env="NVIDIA_TRT_TOOLCHAIN_IMAGE",
-    default_image="oaax-nvidia-tensorrt-toolchain:1.4.0",
+    default_image=f"oaax-nvidia-tensorrt-toolchain:{VERSION}",
     gpu_required=True,
     output_filename="model.trt",
     min_output_bytes=1024 * 1024,

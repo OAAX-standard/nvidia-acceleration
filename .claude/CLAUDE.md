@@ -18,43 +18,21 @@ Each backend has two deliverables:
 ```
 nvidia-acceleration/
 ├── tensorrt/
-│   ├── conversion-toolchain/
-│   │   ├── Dockerfile                    # nvcr.io/nvidia/tensorrt:26.03-py3 base
-│   │   ├── build-toolchain.sh            # builds and saves Docker image (uses repo root as context)
-│   │   ├── conversion_toolchain/
-│   │   │   ├── main.py                   # unzip → validate → trtexec
-│   │   │   ├── utils.py                  # int8 calibration helpers
-│   │   │   └── logger.py                 # structured JSON logging
-│   │   └── scripts/convert.sh           # Docker entrypoint
-│   └── runtime-library/
-│       ├── CMakeLists.txt                # cross-compilation build; requires TRT_DIR, CUDA_DIR
-│       ├── build-runtimes.sh             # build script; requires TRT_DIR, CUDA_DIR, PLATFORM
-│       ├── src/
-│       │   ├── runtime_core.cpp         # OAAX API: init, model_loading, send_input, receive_output
-│       │   └── runtime_utils.cpp        # logging, TRT→OAAX type mapping, queue helpers
-│       ├── include/
-│       │   ├── runtime_core.hpp
-│       │   └── runtime_utils.hpp
-│       └── test/test_runtime.c          # standalone C test
+│   ├── conversion-toolchain/        # Dockerfile (nvcr.io tensorrt base), build-toolchain.sh, build-wheel.sh,
+│   │                                # conversion_toolchain/{main,utils,logger}.py, scripts/convert.sh
+│   └── runtime-library/             # CMakeLists.txt, build-runtimes.sh (matrix PLATFORM:CUDA:TRT),
+│                                    # src/runtime_{core,utils}.cpp, include/, test/test_runtime.c
 ├── onnxruntime/
-│   ├── conversion-toolchain/
-│   │   ├── Dockerfile                    # python:3.8.16 base
-│   │   ├── build-toolchain.sh            # builds Docker image (local context)
-│   │   ├── conversion_toolchain/
-│   │   └── scripts/convert.sh
-│   └── runtime-library/
-│       ├── CMakeLists.txt
-│       ├── build-runtimes.sh
-│       ├── deps/                         # pre-built ORT + CUDA libs, cpuinfo, submodules
-│       ├── src/
-│       └── include/
-├── scripts/
-│   └── setup-env.sh                     # CI env setup: toolchains, TRT archives, CUDA
-├── .github/workflows/
-│   ├── build-runtime.yml                # builds tensorrt/ runtimes; uploads to S3
-│   ├── build-toolchain.yml              # builds tensorrt/ toolchain; uploads to S3
-│   └── delete-temporary-artifacts.yml   # cleans S3 on PR close
-└── VERSION                              # semver, read by build scripts
+│   ├── conversion-toolchain/        # python:3.11-slim + onnxsim; build-toolchain.sh, build-wheel.sh
+│   └── runtime-library/             # CMakeLists.txt, build-runtimes.{sh,bat}, fix-provider-rpath.sh,
+│                                    # src/ (runtime_exports.{def,version} limit exported symbols),
+│                                    # deps/ (pre-built ORT per platform/CUDA, cpuinfo, re2, windows-runtime DLLs, submodules)
+├── scripts/                         # setup-env.sh (toolchains, TRT, CUDA), download-cuda.sh, download-cudnn.sh,
+│                                    # unpack-trt.sh, build-in-docker.sh
+├── tests/                           # stage1 (conversion), stage2 (benchmark), runtime/ C++ tests (incl. Windows)
+├── .github/workflows/               # build-{runtime,toolchain}.yml (TRT), build-onnxruntime-{runtime,toolchain}.yml (ORT),
+│                                    # delete-temporary-artifacts.yml (cleans S3 on PR close)
+└── VERSION                          # semver, read by build scripts and test image tags
 ```
 
 ---
@@ -64,14 +42,15 @@ nvidia-acceleration/
 ### Inference Pipeline
 
 ```
-send_input()  ──► input_queue ──► inference_thread ──► output_queue ──► receive_output()
-                  (ConcurrentQueue)  (TRT enqueueV3)   (ConcurrentQueue)
+runtime_enqueue_input() ─► input_queue ─► inference slots ─► output_queue ─► runtime_retrieve_output()
+                          (ConcurrentQueue)  (TRT enqueueV3,    (ConcurrentQueue)
+                                              one CUDA stream per slot)
 ```
 
-- `send_input()` enqueues `tensors_struct*` non-blocking
-- Inference thread copies inputs to GPU, runs `context->enqueueV3(stream)`, copies outputs to host
-- `receive_output()` polls output queue; returns -1 (100ms sleep) if not ready
-- One model per runtime instance; hardcoded `device_id = 0`
+- `runtime_enqueue_input(model_id, Tensors*)` enqueues non-blocking; `max_concurrent` config key sets the number of concurrent slots per model
+- Each slot copies inputs to GPU, runs `context->enqueueV3(stream)`, copies outputs to host
+- `runtime_retrieve_output(&model_id, &out, timeout_ms)` polls the output queue (1ms sleep) and returns `RUNTIME_STATUS_NO_OUTPUT_AVAILABLE` on timeout
+- Multiple models per runtime instance (`runtime_load_models`); default CUDA device 0
 
 ### Execution Engine
 
@@ -115,19 +94,19 @@ for (int i = 0; i < engine->getNbIOTensors(); i++)
 
 ### External Dependencies (not in repo)
 
-- `TRT_DIR`: defaults to `.deps/tensorrt/cuda-<N>/<platform>/` (set by `setup-env.sh`)
+- `TRT_DIR`: defaults to `.deps/tensorrt/trt<V>/cuda-<N>/<platform>/` (set by `setup-env.sh`)
 - `CUDA_DIR`: defaults to `.deps/cuda/<N>/<platform>/` (set by `setup-env.sh`)
 
 ### Build Output
 
-`tensorrt/runtime-library/build/NVIDIA_TENSORRT/<arch>/Ubuntu/<ubuntu_version>/library-cuda_<N>.tar.gz` — archive of `bin/` containing `libRuntimeLibrary.so` + bundled TRT + CUDA libs
+`tensorrt/runtime-library/build/NVIDIA_TENSORRT/<arch>/Ubuntu/<ubuntu_version>/library-trt<V>-cuda_<N>.tar.gz` — archive of `bin/` containing `libRuntimeLibrary.so` + bundled TRT + CUDA libs (TRT 10 and 11 variants)
 
 Where `<arch>` is `x86_64`, `aarch64-jetson`, or `aarch64-sbsa`.
 
 ### CI Artifacts (S3)
 
-- Runtime: `s3://oaax/runtimes/<version>/NVIDIA_TENSORRT/<arch>/Ubuntu/<ubuntu_version>/library-cuda_<N>.tar.gz`
-- Toolchain: `s3://oaax/conversion-toolchain/<version>/NVIDIA/oaax-nvidia-tensorrt-toolchain.tar`
+- Runtime: `s3://oaax/runtimes/<version>/NVIDIA_TRT/...` (TRT) and `.../NVIDIA_ORT/...` (ORT), same `<arch>/Ubuntu/<ubuntu_version>/` layout as the build output
+- Toolchain: `s3://oaax/conversion-toolchain/<version>/NVIDIA/oaax-nvidia-{tensorrt,onnxruntime}-toolchain.tar`
 
 ---
 
@@ -136,7 +115,7 @@ Where `<arch>` is `x86_64`, `aarch64-jetson`, or `aarch64-sbsa`.
 1. **Conversion runs on the deployment machine** — TensorRT requires the target GPU to be physically present to compile kernels; no cross-compilation of engines.
 2. **Engine not portable** — a `.trt` engine is tied to the GPU architecture and CPU platform it was built on; must reconvert for each target.
 3. **Fixed batch size** — dynamic shapes not supported in v1; batch size is fixed at 1.
-4. **Single GPU only** — hardcoded `device_id = 0`.
-5. **Polling latency** — inference thread sleeps 10ms when idle; `receive_output` sleeps 100ms when no output is ready.
-6. **`runtime_error_message()` is a stub** — returns a static string; no structured error state.
+4. **Single GPU only** — always the default CUDA device (0).
+5. **Polling latency** — slots and `runtime_retrieve_output` poll with a 1ms sleep.
+6. **Error reporting is a single string** — `runtime_get_error()` returns only the last error message; no structured error state.
 7. **Output always on CPU** — output is always `cudaMemcpy`'d to host; no GPU pointer exposure.

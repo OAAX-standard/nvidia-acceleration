@@ -34,8 +34,8 @@ python3 tests/generate_model.py
 
 echo ""
 echo "==> Building wheel..."
-bash conversion-toolchain/build-wheel.sh
-WHEEL=$(ls conversion-toolchain/artifacts/*.whl | sort | tail -1)
+bash tensorrt/conversion-toolchain/build-wheel.sh
+WHEEL=$(ls tensorrt/conversion-toolchain/artifacts/*.whl | sort | tail -1)
 WHEEL_NAME=$(basename "$WHEEL")
 echo "    $WHEEL_NAME"
 

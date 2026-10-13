@@ -33,45 +33,35 @@ bash scripts/setup-env.sh
 **2. Build**
 
 ```bash
-# All platforms and CUDA versions (uses built-in matrix)
+# Full matrix (see table below)
 bash build-runtimes.sh
 
 # Single combination
-PLATFORM=X86_64 CUDA_VERSION=13 MARCH=x86-64-v3 bash build-runtimes.sh
+PLATFORM=X86_64 CUDA_VERSION=13 TRT_VERSION=10 bash build-runtimes.sh
 ```
 
 | Variable | Default | Description |
 |---|---|---|
 | `PLATFORM` | all platforms | `X86_64`, `AARCH64_JETSON`, or `AARCH64_SBSA` |
 | `CUDA_VERSION` | all versions | Major CUDA version (`12` or `13`) |
-| `MARCH` | per-platform default (see below) | Target CPU architecture flag passed to `-march=` |
+| `TRT_VERSION` | all versions | Major TensorRT version (`10` or `11`) |
+| `MARCH` | per-platform (`x86-64`, `armv8-a`) | Target CPU architecture passed to `-march=` |
 | `BUILD_TYPE` | `Release` | `Release`, `Debug`, `RelWithDebInfo` |
 | `TRT_DIR` | from `.deps/tensorrt/` | Override path to extracted TensorRT archive |
 | `CUDA_DIR` | from `.deps/cuda/` | Override path to CUDA toolkit |
 
-**Available `MARCH` values per platform:**
+**Build matrix** (`PLATFORM:CUDA:TRT`): `X86_64` 12/13 × TRT 10/11; `AARCH64_JETSON` CUDA 12 × TRT 10 (JetPack ships no TRT 11); `AARCH64_SBSA` CUDA 12/13 × TRT 10 and CUDA 13 × TRT 11.
 
-| Platform | `MARCH` | Target hardware |
-|---|---|---|
-| `X86_64` | `x86-64` | Baseline (SSE2 only) |
-| `X86_64` | `x86-64-v3` *(default)* | Haswell+ (AVX2, FMA) |
-| `X86_64` | `x86-64-v4` | Skylake-X+ (AVX-512) |
-| `AARCH64_JETSON` | `armv8-a` | Baseline aarch64 |
-| `AARCH64_JETSON` | `armv8.2-a+fp16+dotprod` *(default)* | Jetson Orin (Cortex-A78AE) |
-| `AARCH64_SBSA` | `armv8-a` | Baseline aarch64 |
-| `AARCH64_SBSA` | `armv9-a` *(default)* | Grace / Neoverse V2 |
-
-Output: `build/NVIDIA/<arch>/<march>/Ubuntu/<libc>/library-cuda_<N>.tar.gz`
+Output: `build/NVIDIA_TENSORRT/<arch>/Ubuntu/<ubuntu_version>/library-trt<TRT>-cuda_<CUDA>.tar.gz`, where `<arch>` is `x86_64`, `aarch64-jetson` or `aarch64-sbsa` (Ubuntu 22.04 for x86_64/Jetson, 24.04 for SBSA).
 
 ```
-build/NVIDIA/x86_64/x86-64-v3/Ubuntu/glibc2.35/
-├── library-cuda_13/          # build tree
+build/NVIDIA_TENSORRT/x86_64/Ubuntu/22.04/
+├── library-trt10-cuda_13/        # build tree
 │   └── bin/
 │       ├── libRuntimeLibrary.so
 │       ├── libnvinfer.so.10
-│       ├── libnvinfer_plugin.so.10
 │       └── libcudart.so.13
-└── library-cuda_13.tar.gz    # deployable archive (bin/ contents)
+└── library-trt10-cuda_13.tar.gz  # deployable archive (bin/ contents)
 ```
 
 ## Deploy the runtime
@@ -99,7 +89,7 @@ A standalone C test is provided in `test/test_runtime.c`. It exercises the full 
 
 ```bash
 docker run --rm --gpus all \
-  -v $(pwd)/build/NVIDIA/x86_64/x86-64-v3/Ubuntu/glibc2.35/library-cuda_13/bin:/runtime_lib \
+  -v $(pwd)/build/NVIDIA_TENSORRT/x86_64/Ubuntu/22.04/library-trt10-cuda_13/bin:/runtime_lib \
   -v $(pwd)/test/test_runtime.c:/tmp/test_runtime.c \
   -v /path/to/model.trt:/tmp/model.trt \
   --entrypoint bash \

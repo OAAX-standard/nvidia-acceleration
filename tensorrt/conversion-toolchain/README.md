@@ -68,8 +68,8 @@ Output: `artifacts/oaax_nvidia_tensorrt_conversion-<version>-py3-none-any.whl`
 pip install oaax_nvidia_tensorrt_conversion-<version>-py3-none-any.whl
 
 # int8 (also needs the tensorrt Python bindings):
-pip install "oaax_nvidia_tensorrt_conversion-<version>-py3-none-any.whl[int8]" \
-    --extra-index-url https://pypi.nvidia.com
+pip install "oaax_nvidia_tensorrt_conversion-<version>-py3-none-any.whl[int8-trt10]" \
+    --extra-index-url https://pypi.nvidia.com      # TRT 10; use [int8-trt11] for TRT 11
 ```
 
 **System prerequisites** (must be installed separately — not bundled in the wheel):
@@ -110,7 +110,9 @@ bundle.zip
 | Field | Required | Values | Description |
 |---|---|---|---|
 | `precision` | Yes | `fp32`, `fp16`, `int8` | Inference precision |
-| `workspace_gb` | No | integer | TensorRT workspace memory limit in GB (default: 4) |
+| `workspace_gb` | Yes | positive number | TensorRT workspace memory limit in GB |
+| `optimization_level` | No | integer 1–5 | `trtexec --builderOptimizationLevel` (default 3) |
+| `avg_timing` | No | integer | `trtexec --avgTiming` (default 8) |
 
 The GPU architecture is auto-detected from the machine running the conversion via `nvidia-smi`. The engine is always optimised for the GPU that is physically present.
 
