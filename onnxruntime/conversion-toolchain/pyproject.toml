@@ -6,6 +6,7 @@ requires-python = ">=3.8"
 dependencies = [
     "onnx",
     "onnxsim",
+    "onnxruntime",  # onnxsim imports it at load time and cannot pip-install it inside the uv venv
 ]
 
 [project.scripts]
