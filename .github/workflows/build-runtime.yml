@@ -21,15 +21,14 @@ jobs:
     container:
       image: ubuntu:22.04
       options: >-
-        --volume /var/run/docker.sock:/var/run/docker.sock
         --volume ${{ vars.NVIDIA_DEPS_DIR }}:${{ vars.NVIDIA_DEPS_DIR }}
 
     steps:
-      - name: Set up Docker image
+      - name: Set up environment
         run: |
           export DEBIAN_FRONTEND=noninteractive
           apt-get update
-          apt-get install -y git git-lfs wget curl build-essential python3 xz-utils zstd s3cmd tree sudo
+          apt-get install -y git git-lfs wget curl build-essential python3 xz-utils zstd s3cmd sudo
           git lfs install
 
       - name: Checkout
