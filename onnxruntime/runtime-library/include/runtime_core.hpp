@@ -1,31 +1,25 @@
-
 #ifndef RUNTIME_CORE_HPP
 #define RUNTIME_CORE_HPP
 
-#include "tensors_struct.h"
+#include "interface.h"
 
+// On Windows, exports are listed in src/runtime_exports.def: MSVC rejects
+// adding __declspec(dllexport) to functions already declared in interface.h
+// without it (error C2375).
 #ifdef _WIN32
-#define EXPOSE_FUNCTION __declspec(dllexport)
+#define EXPOSE_FUNCTION
 #else
 #define EXPOSE_FUNCTION __attribute__((visibility("default")))
 #endif
 
-extern "C" EXPOSE_FUNCTION int runtime_initialization_with_args(int length, char **keys, void **values);
-
-extern "C" EXPOSE_FUNCTION int runtime_initialization();
-
-extern "C" EXPOSE_FUNCTION int runtime_model_loading(const char *model_path);
-
-extern "C" EXPOSE_FUNCTION int send_input(tensors_struct *input_tensors);
-
-extern "C" EXPOSE_FUNCTION int receive_output(tensors_struct **output_tensors);
-
-extern "C" EXPOSE_FUNCTION int runtime_destruction();
-
-extern "C" EXPOSE_FUNCTION const char *runtime_error_message();
-
-extern "C" EXPOSE_FUNCTION const char *runtime_version();
-
-extern "C" EXPOSE_FUNCTION const char *runtime_name();
+extern "C" EXPOSE_FUNCTION RuntimeStatus runtime_init(Config config);
+extern "C" EXPOSE_FUNCTION RuntimeStatus runtime_load_models(int num_models, const ModelConfig *model_configs);
+extern "C" EXPOSE_FUNCTION RuntimeStatus runtime_enqueue_input(int model_id, Tensors *input_tensors);
+extern "C" EXPOSE_FUNCTION RuntimeStatus runtime_retrieve_output(int *model_id, Tensors **output_tensors, int timeout_ms);
+extern "C" EXPOSE_FUNCTION RuntimeStatus runtime_cleanup(void);
+extern "C" EXPOSE_FUNCTION const char *runtime_get_error(void);
+extern "C" EXPOSE_FUNCTION const char *runtime_get_version(void);
+extern "C" EXPOSE_FUNCTION const char *runtime_get_name(void);
+extern "C" EXPOSE_FUNCTION const char *runtime_get_info(void);
 
 #endif // RUNTIME_CORE_HPP

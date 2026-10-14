@@ -8,7 +8,10 @@ dependencies = []
 dev = [
     "pytest",
     "onnx",
-    "ultralytics",
+    "torch",
+    "torchvision",
+    "numpy",
+    "pillow",
 ]
 
 [tool.pytest.ini_options]

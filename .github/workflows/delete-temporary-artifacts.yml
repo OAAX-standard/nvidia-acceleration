@@ -8,12 +8,16 @@ on:
     types:
       - closed
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   handle-pr:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install s3cmd and Python dependencies
+      - name: Install s3cmd
         run: |
           sudo apt-get update
           sudo apt-get install -y s3cmd

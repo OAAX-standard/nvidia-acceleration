@@ -7,13 +7,16 @@ dependencies = [
     "numpy",
     "pillow",
     "onnx",
-    "pycuda",
+    "onnxconverter-common",
 ]
 
-# tensorrt is only required for int8 precision.
-# Install from NVIDIA's index: pip install tensorrt --extra-index-url https://pypi.nvidia.com
+# Precision extras — install the one matching your TRT version:
+#   TRT 10 int8:  pip install "pkg[int8-trt10]" --extra-index-url https://pypi.nvidia.com
+#   TRT 11 int8:  pip install "pkg[int8-trt11]" --extra-index-url https://pypi.nvidia.com
+#   TRT 11 fp16:  onnxconverter-common is included in base deps
 [project.optional-dependencies]
-int8 = ["tensorrt"]
+int8-trt10 = ["tensorrt", "pycuda"]
+int8-trt11 = ["nvidia-modelopt[onnx]"]
 
 [project.scripts]
 conversion_toolchain = "conversion_toolchain.main:cli"

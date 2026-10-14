@@ -31,25 +31,8 @@ This builds the image and saves it as a `.tar` archive in `artifacts/`.
 docker run --rm \
   -v /path/to/model.onnx:/input/model.onnx \
   -v /path/to/output:/output \
-  oaax-nvidia-toolchain:1.4.0 \
+  oaax-nvidia-toolchain:<version> \
   /input/model.onnx /output
 ```
 
 The simplified model and `logs.json` will appear in `/path/to/output/`.
-
----
-
-## Python wheel (Docker-free fallback)
-
-### Build
-
-```bash
-bash build-wheel.sh
-```
-
-### Install and run
-
-```bash
-pip install artifacts/oaax_nvidia_ort_conversion-*.whl
-conversion_toolchain /path/to/model.onnx /path/to/output
-```

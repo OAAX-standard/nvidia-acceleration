@@ -11,35 +11,12 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  determine-version:
-    runs-on: hetzner-runner
-    container:
-      image: ubuntu:22.04
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 1
-
-      - name: Determine version
-        id: version
-        run: |
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            if [ -f VERSION ]; then
-              version=$(cat VERSION)
-            else
-              exit 1
-            fi
-          else
-            version=${{ github.head_ref }}
-          fi
-          echo "version=$version" >> $GITHUB_OUTPUT
-
   build-toolchain:
-    needs: determine-version
     timeout-minutes: 20
     runs-on: hetzner-runner
     container:
@@ -58,6 +35,19 @@ jobs:
           apt-get update -y
           apt-get install -y s3cmd docker.io
 
+      - name: Determine version
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            if [ -f VERSION ]; then
+              version=$(cat VERSION)
+            else
+              exit 1
+            fi
+          else
+            version=${{ github.head_ref }}
+          fi
+          echo "version=$version" >> $GITHUB_ENV
+
       - name: Build conversion toolchain image
         run: bash onnxruntime/conversion-toolchain/build-toolchain.sh
 
@@ -75,7 +65,7 @@ jobs:
 
       - name: Upload toolchain image to S3
         run: |
-          version=${{ needs.determine-version.outputs.version }}
+          version=${{ env.version }}
           s3cmd put "onnxruntime/conversion-toolchain/artifacts/oaax-nvidia-toolchain.tar" \
             "s3://oaax/conversion-toolchain/${version}/NVIDIA/oaax-nvidia-onnxruntime-toolchain.tar"
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then

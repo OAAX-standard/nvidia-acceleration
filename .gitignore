@@ -24,3 +24,10 @@ devices.md
 tests/artifacts/
 tests/compiled_models/
 tests/runtime/build/
+# Agent notes/handoffs and model weights stay local
+.claude/memory/
+.claude/HANDOFF*
+__pycache__/
+*.pt
+/*.onnx
+*.egg-info/

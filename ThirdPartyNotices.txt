@@ -10,7 +10,7 @@ along with their licenses and copyright notices.
 ### spdlog
 
 Source: https://github.com/gabime/spdlog
-Version: 1.15.0
+Version: 1.15.3
 License: MIT License
 
 Copyright (c) 2016 Gabi Melman and spdlog contributors.
@@ -109,6 +109,29 @@ The CUDA Toolkit is proprietary software owned by NVIDIA Corporation. Use is
 subject to the CUDA Toolkit End User License Agreement available at:
 
     https://docs.nvidia.com/cuda/eula/
+
+---
+
+### ONNX Runtime backend (runtime library)
+
+These components are bundled or statically linked into the ONNX Runtime
+runtime packages. Full license texts ship with their sources under
+onnxruntime/runtime-library/deps/ (ONNX Runtime's own ThirdPartyNotices.txt
+covers its transitive dependencies, e.g. protobuf, abseil, flatbuffers, onnx).
+
+- ONNX Runtime — https://github.com/microsoft/onnxruntime — MIT License
+  (Copyright (c) Microsoft Corporation)
+- cpuinfo — https://github.com/pytorch/cpuinfo — BSD 2-Clause License
+  (Copyright Google LLC, Facebook Inc., Georgia Institute of Technology, Marat Dukhan)
+- RE2 — https://github.com/google/re2 — BSD 3-Clause License
+  (Copyright (c) The RE2 Authors)
+- nlohmann/json 3.11.3 — https://github.com/nlohmann/json — MIT License
+  (Copyright (c) Niels Lohmann)
+- NVIDIA cuDNN — https://developer.nvidia.com/cudnn — NVIDIA cuDNN Software
+  License Agreement (proprietary; redistributed in the ORT packages under its
+  redistribution terms: https://docs.nvidia.com/deeplearning/cudnn/latest/reference/eula.html)
+- Microsoft Visual C++ Redistributable (Windows packages only: msvcp140,
+  vcruntime140) — redistributed under the Microsoft Visual Studio redistribution terms.
 
 ---
 
@@ -232,3 +255,11 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+### Other conversion-toolchain dependencies
+
+- onnxsim (ORT toolchain) — https://github.com/daquexian/onnx-simplifier — Apache License 2.0
+- onnxconverter-common (TRT toolchain, fp16) — https://github.com/microsoft/onnxconverter-common — MIT License
+- nvidia-modelopt (optional, TRT 11 int8) — https://github.com/NVIDIA/TensorRT-Model-Optimizer — Apache License 2.0

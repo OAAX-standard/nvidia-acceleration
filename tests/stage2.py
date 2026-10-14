@@ -39,12 +39,13 @@ def header(title: str) -> None:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--backend",     choices=["trt", "ort"], default="trt")
+    p.add_argument("--backend",     choices=["trt", "ort", "trt_int8"], default="trt")
     p.add_argument("--runtime-lib", default="")
     p.add_argument("--runs",        type=int, default=100)
     p.add_argument("--warmup",      type=int, default=10)
     p.add_argument("--models",      default="")
     p.add_argument("--csv",         default="")
+    p.add_argument("--in-flight",   type=int, default=1)
     p.add_argument("--skip-build",  action="store_true")
     p.add_argument("--log-level",   type=int, default=3)
     return p.parse_args()
@@ -53,7 +54,7 @@ def parse_args() -> argparse.Namespace:
 def default_runtime_dir(backend_name: str) -> Path:
     base = ROOT / f"{backend_name}runtime"[3:] if backend_name == "ort" else ROOT / "tensorrt"
     # onnxruntime or tensorrt
-    name_map = {"trt": "tensorrt", "ort": "onnxruntime"}
+    name_map = {"trt": "tensorrt", "trt_int8": "tensorrt", "ort": "onnxruntime"}
     return ROOT / name_map[backend_name] / "runtime-library"
 
 
@@ -66,8 +67,11 @@ def find_lib_dir(lib_arg: str, backend_name: str) -> str:
             return str(p)
     runtime_dir = default_runtime_dir(backend_name)
     candidates = sorted(runtime_dir.glob("**/libRuntimeLibrary.so"))
-    x86 = [c for c in candidates if "x86_64" in str(c)]
-    chosen = x86[0] if x86 else (candidates[0] if candidates else None)
+    # Prefer x86_64 (case-insensitive); exclude aarch64 paths
+    x86 = [c for c in candidates if "x86_64" in str(c).lower() and "aarch64" not in str(c).lower()]
+    pool = x86 if x86 else candidates
+    # Prefer CUDA 13 over older versions (sorted alphabetically, "13" > "12" > "11")
+    chosen = pool[-1] if pool else None
     return str(chosen.parent) if chosen else str(runtime_dir / "build" / "bin")
 
 
@@ -119,6 +123,7 @@ def parse_field(text: str, pattern: str) -> str:
 def run_inference_test(
     model_path: Path, model_name: str,
     runs: int, warmup: int, log_level: int, lib_dir: str,
+    in_flight: int = 1,
 ) -> tuple | None:
     binary = inference_test_path()
     if not binary.exists():
@@ -127,7 +132,8 @@ def run_inference_test(
 
     input_name, input_shape = _input_config(model_name)
     env = os.environ.copy()
-    env["LD_LIBRARY_PATH"] = f"{TEST_BUILD_DIR}:{lib_dir}:{env.get('LD_LIBRARY_PATH', '')}"
+    system_cuda = "/usr/local/cuda/lib64"
+    env["LD_LIBRARY_PATH"] = f"{TEST_BUILD_DIR}:{lib_dir}:{system_cuda}:{env.get('LD_LIBRARY_PATH', '')}"
 
     try:
         r = subprocess.run(
@@ -136,6 +142,7 @@ def run_inference_test(
              "--input-shape", input_shape,
              "--runs",        str(runs),
              "--warmup",      str(warmup),
+             "--in-flight",   str(in_flight),
              "--log-level",   str(log_level),
              "--no-validate"],
             capture_output=True, text=True, env=env,
@@ -211,7 +218,7 @@ def main() -> None:
         pass_count = fail_count = 0
         for model_path, model_name in models:
             r = run_inference_test(model_path, model_name, args.runs, args.warmup,
-                                   args.log_level, lib_dir)
+                                   args.log_level, lib_dir, args.in_flight)
             if r:
                 print(_ROW.format(model_name, *r))
                 if csv_writer:

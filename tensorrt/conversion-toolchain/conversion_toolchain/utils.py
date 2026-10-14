@@ -3,13 +3,14 @@ Conversion toolchain utilities.
 
 This module implements the two engine-build paths:
 
-  fp32 / fp16  →  run_trtexec()
-       int8    →  build_int8_engine()
+  fp32        →  run_trtexec()
+  fp16 TRT 10 →  run_trtexec() with --fp16
+  fp16 TRT 11 →  build_fp16_engine()  (pre-convert ONNX to FP16, then trtexec)
+  int8 TRT 10 →  build_int8_engine()  (calibration-based, TRT Python API)
+  int8 TRT 11 →  build_int8_engine_trt11()  (ModelOpt Q/DQ quantization, then trtexec)
 
-The INT8 path uses the TensorRT Python API directly so that a custom
-image-based calibrator can be attached.  The fp32/fp16 path delegates
-everything to the trtexec CLI, which is simpler and produces well-optimised
-engines without additional Python dependencies.
+TRT 11 removed BuilderFlag.FP16, BuilderFlag.INT8, and the calibration API.
+Both int8 and fp16 now require offline model transformation before calling trtexec.
 
 Input zip layout
 ----------------
@@ -23,8 +24,10 @@ Input zip layout
 config.json schema
 ------------------
   {
-      "precision":        "fp16",       // "fp32" | "fp16" | "int8"
-      "workspace_gb":     4,            // TRT builder workspace limit in GB
+      "precision":           "fp16",    // "fp32" | "fp16" | "int8"
+      "workspace_gb":        4,         // TRT builder workspace limit in GB
+      "optimization_level":  5,         // optional; trtexec --builderOptimizationLevel (1-5, default 3)
+      "avg_timing":          16,        // optional; trtexec --avgTiming (default 8)
       // --- int8 only ---
       "calibration_data": "calib/",     // directory inside the zip (images)
       "preprocessing": {                // optional; ImageNet defaults if omitted
@@ -50,11 +53,9 @@ import zipfile
 # Dependency checks
 # ---------------------------------------------------------------------------
 
-# TRT version bundled in the OAAX runtime library (libnvinfer.so.X.Y.Z).
-# Engines must be built with a TRT version whose major number matches and
-# whose minor number is <= this value (newer runtimes can load older engines,
-# but not the other way around).
-_RUNTIME_TRT_VERSION = (10, 16, 0)
+# TRT major versions supported by the conversion toolchain.
+# Engines built with a version outside this set may not load on known runtime builds.
+_SUPPORTED_TRT_MAJOR_VERSIONS = (10, 11)
 
 
 def _parse_trtexec_banner(output: str):
@@ -94,35 +95,36 @@ def _tensorrt_python_version():
         return None
 
 
-def _version_warning(name: str, detected, expected=_RUNTIME_TRT_VERSION):
-    """Return a warning string if the detected TRT version is incompatible, else None."""
+def _version_warning(name: str, detected):
+    """Return a warning string if the detected TRT major version is not supported, else None."""
     if detected is None:
         return (f'{name}: version could not be determined — '
-                f'ensure it is TRT {expected[0]}.{expected[1]}.x')
-    d_maj, d_min, d_pat = detected
-    e_maj, e_min, e_pat = expected
-    if d_maj != e_maj:
-        return (f'{name}: version {d_maj}.{d_min}.{d_pat} has a different major version '
-                f'than the runtime TRT {e_maj}.{e_min}.{e_pat} — '
-                f'engines will not load (major version must match)')
-    if d_min > e_min:
-        return (f'{name}: version {d_maj}.{d_min}.{d_pat} is newer than '
-                f'the runtime TRT {e_maj}.{e_min}.{e_pat} — '
-                f'engine may use features not supported by the runtime')
-    return None  # same major, minor <= runtime → compatible
+                f'supported major versions: {_SUPPORTED_TRT_MAJOR_VERSIONS}')
+    major = detected[0]
+    if major not in _SUPPORTED_TRT_MAJOR_VERSIONS:
+        return (f'{name}: version {detected[0]}.{detected[1]}.{detected[2]} '
+                f'(major {major}) is not in the supported set {_SUPPORTED_TRT_MAJOR_VERSIONS} — '
+                f'the engine may not load on known runtime builds')
+    return None
 
 
-def check_nvidia_dependencies(precision: str) -> None:
+def check_nvidia_dependencies(precision: str) -> int | None:
     """Verify NVIDIA dependencies are present and version-compatible.
 
     Missing dependencies are raised as a RuntimeError (hard stop).
     Version mismatches are printed as warnings to stderr (soft — conversion
     may still succeed but the engine might fail to load at runtime).
 
-    Checks are precision-aware: tensorrt and pycuda are only required for int8.
+    Checks are precision-aware:
+      - fp16 on TRT 11+: requires onnxconverter-common (--fp16 flag was removed)
+      - int8 on TRT 10: requires tensorrt Python package + pycuda (calibration API)
+      - int8 on TRT 11+: requires nvidia-modelopt[onnx] (calibration API removed; Q/DQ nodes instead)
 
     Args:
         precision: One of "fp32", "fp16", "int8".
+
+    Returns:
+        Detected TRT major version, or None if trtexec is missing/unreadable.
 
     Raises:
         RuntimeError: listing every missing or version-incompatible dependency.
@@ -137,28 +139,46 @@ def check_nvidia_dependencies(precision: str) -> None:
             '(apt-get install nvidia-driver-<version>)')
 
     # trtexec: always required (fp32/fp16 conversion path).
+    trt_version = None
     if not shutil.which('trtexec'):
         missing.append(
             'trtexec  →  install TensorRT and add its bin/ directory to PATH '
             '(typically /usr/src/tensorrt/bin or the TRT package bin/)')
     else:
-        w = _version_warning('trtexec', _trtexec_version())
+        trt_version = _trtexec_version()
+        w = _version_warning('trtexec', trt_version)
         if w:
             warnings.append(w)
 
-    # tensorrt Python bindings + pycuda: only needed for the int8 path.
-    if precision == 'int8':
-        if importlib.util.find_spec('tensorrt') is None:
-            missing.append(
-                'tensorrt  →  pip install tensorrt '
-                '--extra-index-url https://pypi.nvidia.com')
-        else:
-            w = _version_warning('tensorrt Python package', _tensorrt_python_version())
-            if w:
-                warnings.append(w)
+    trt_major = trt_version[0] if trt_version else None
 
-        if importlib.util.find_spec('pycuda') is None:
-            missing.append('pycuda  →  pip install pycuda')
+    # fp16 on TRT 11+: --fp16 flag was removed; model is pre-converted to FP16 via onnxconverter-common.
+    if precision == 'fp16' and trt_major is not None and trt_major >= 11:
+        if importlib.util.find_spec('onnxconverter_common') is None:
+            missing.append(
+                'onnxconverter-common (required for fp16 with TRT 11+)  →  '
+                'pip install onnxconverter-common')
+
+    if precision == 'int8':
+        if trt_major is not None and trt_major >= 11:
+            # TRT 11: calibration API removed; use ModelOpt to embed Q/DQ nodes offline.
+            if importlib.util.find_spec('modelopt') is None:
+                missing.append(
+                    'nvidia-modelopt[onnx] (required for int8 with TRT 11+)  →  '
+                    'pip install "nvidia-modelopt[onnx]" --extra-index-url https://pypi.nvidia.com')
+        else:
+            # TRT 10: calibration-based INT8 via TRT Python API.
+            if importlib.util.find_spec('tensorrt') is None:
+                missing.append(
+                    'tensorrt  →  pip install tensorrt '
+                    '--extra-index-url https://pypi.nvidia.com')
+            else:
+                w = _version_warning('tensorrt Python package', _tensorrt_python_version())
+                if w:
+                    warnings.append(w)
+
+            if importlib.util.find_spec('pycuda') is None:
+                missing.append('pycuda  →  pip install pycuda')
 
     if missing:
         lines = '\n'.join(f'  - {m}' for m in missing)
@@ -169,6 +189,8 @@ def check_nvidia_dependencies(precision: str) -> None:
 
     for w in warnings:
         print(f'[WARNING] {w}', file=sys.stderr)
+
+    return trt_major
 
 
 # ---------------------------------------------------------------------------
@@ -263,6 +285,18 @@ def validate_config(config: dict):
         raise ValueError(
             f"workspace_gb must be a positive number, got '{config['workspace_gb']}'")
 
+    # --- optimization_level (optional) ---
+    if 'optimization_level' in config:
+        v = config['optimization_level']
+        if not isinstance(v, int) or not (1 <= v <= 5):
+            raise ValueError(f"optimization_level must be an integer 1-5, got '{v}'")
+
+    # --- avg_timing (optional) ---
+    if 'avg_timing' in config:
+        v = config['avg_timing']
+        if not isinstance(v, int) or v < 1:
+            raise ValueError(f"avg_timing must be a positive integer, got '{v}'")
+
     # --- int8-specific ---
     if config['precision'] == 'int8' and not config.get('calibration_data'):
         raise ValueError(
@@ -297,8 +331,16 @@ def run_trtexec(onnx_path: str, output_trt_path: str, config: dict, logs):
         '--skipInference',
     ]
 
-    if config['precision'] == 'fp16':
+    # --fp16 was removed in TRT 11; fp16 on TRT 11+ uses build_fp16_engine() instead.
+    trt_ver = _trtexec_version()
+    if config['precision'] == 'fp16' and trt_ver and trt_ver[0] < 11:
         cmd.append('--fp16')
+
+    if 'optimization_level' in config:
+        cmd.append(f'--builderOptimizationLevel={config["optimization_level"]}')
+
+    if 'avg_timing' in config:
+        cmd.append(f'--avgTiming={config["avg_timing"]}')
 
     logs.add_message('Running trtexec', {'command': ' '.join(cmd)})
 
@@ -313,6 +355,46 @@ def run_trtexec(onnx_path: str, output_trt_path: str, config: dict, logs):
         raise RuntimeError(
             f"trtexec failed (exit {result.returncode}). "
             f"stderr: {result.stderr[-500:]}")
+
+
+# ---------------------------------------------------------------------------
+# fp16 path for TRT 11+: Python API (--fp16 trtexec flag was removed in TRT 11)
+# ---------------------------------------------------------------------------
+
+def build_fp16_engine(onnx_path: str, output_trt_path: str, config: dict, logs):
+    """Build an FP16 TensorRT engine for TRT 11+.
+
+    TRT 11 removed BuilderFlag.FP16 and uses strongly-typed networks by default,
+    so precision is driven by the ONNX model's own tensor types. This function
+    converts the (FP32) ONNX model to FP16 first, then delegates to trtexec.
+
+    Args:
+        onnx_path:       Path to the source ONNX model.
+        output_trt_path: Destination path for the serialised .trt engine.
+        config:          Validated config dict (see validate_config).
+        logs:            Logs instance for structured output.
+
+    Raises:
+        RuntimeError: if ONNX conversion or trtexec fails.
+    """
+    import tempfile
+    import onnx
+    from onnxconverter_common import float16
+
+    logs.add_message('Converting ONNX model to FP16 (TRT 11+ strongly-typed mode)')
+
+    model = onnx.load(onnx_path)
+    model_fp16 = float16.convert_float_to_float16(model, keep_io_types=True)
+
+    with tempfile.NamedTemporaryFile(suffix='.onnx', delete=False) as f:
+        fp16_onnx_path = f.name
+    onnx.save(model_fp16, fp16_onnx_path)
+
+    # Build with fp32 config — the model is already FP16, no precision flag needed.
+    fp32_config = {**config, 'precision': 'fp32'}
+    run_trtexec(fp16_onnx_path, output_trt_path, fp32_config, logs)
+
+    os.unlink(fp16_onnx_path)
 
 
 # ---------------------------------------------------------------------------
@@ -538,6 +620,83 @@ def build_int8_engine(onnx_path: str, output_trt_path: str,
         'calibration_cache':      cache_file,
         'num_calibration_images': len(image_paths),
     })
+
+
+# ---------------------------------------------------------------------------
+# int8 path for TRT 11+: ModelOpt Q/DQ quantization
+# ---------------------------------------------------------------------------
+
+def build_int8_engine_trt11(onnx_path: str, output_trt_path: str,
+                             calib_dir: str, config: dict, logs):
+    """Build an INT8 TensorRT engine for TRT 11+ using ModelOpt ONNX quantization.
+
+    TRT 11 removed the calibration-based INT8 API (BuilderFlag.INT8,
+    IBuilderConfig.int8_calibrator).  The new approach is to embed Q/DQ nodes
+    directly into the ONNX model offline, which TRT 11 detects automatically.
+    ModelOpt handles the quantization; the quantized ONNX is then passed to
+    trtexec with no special precision flags.
+
+    Args:
+        onnx_path:       Path to the source ONNX model.
+        output_trt_path: Destination path for the serialised .trt engine.
+        calib_dir:       Directory containing calibration images (JPG/PNG/…).
+        config:          Validated config dict (see validate_config).
+        logs:            Logs instance for structured output.
+
+    Raises:
+        FileNotFoundError: if no images are found in calib_dir.
+        RuntimeError:      if quantization or the TRT engine build fails.
+    """
+    import tempfile
+    import numpy as np
+    import onnx
+    from modelopt.onnx.quantization import quantize as modelopt_quantize
+
+    preprocessing = config.get('preprocessing', {})
+    input_shape = get_input_shape(onnx_path)
+    _, C, H, W = input_shape
+
+    # Resolve the input tensor name from the ONNX graph.
+    model = onnx.load(onnx_path)
+    initializer_names = {init.name for init in model.graph.initializer}
+    data_inputs = [inp for inp in model.graph.input
+                   if inp.name not in initializer_names]
+    input_name = data_inputs[0].name
+
+    image_paths = _collect_images(calib_dir)
+    logs.add_message('Collecting calibration data for ModelOpt quantization', {
+        'num_images':    len(image_paths),
+        'input_shape':   list(input_shape),
+        'preprocessing': preprocessing or 'ImageNet defaults',
+    })
+
+    # Stack all images into (N, C, H, W) — ModelOpt accepts a dict of numpy arrays.
+    calib_array = np.stack([
+        _preprocess_image(p, H, W, preprocessing).squeeze(0)  # (C, H, W)
+        for p in image_paths
+    ])
+
+    with tempfile.NamedTemporaryFile(suffix='.onnx', delete=False) as f:
+        quantized_onnx_path = f.name
+
+    logs.add_message('Embedding INT8 Q/DQ nodes via ModelOpt (this may take a few minutes)')
+
+    modelopt_quantize(
+        onnx_path,
+        quantize_mode='int8',
+        calibration_data={input_name: calib_array},
+        output_path=quantized_onnx_path,
+    )
+
+    logs.add_message('Q/DQ quantization complete, building TRT engine')
+
+    # TRT 11 detects Q/DQ nodes automatically — no --int8 flag needed.
+    fp32_config = {**config, 'precision': 'fp32'}
+    run_trtexec(quantized_onnx_path, output_trt_path, fp32_config, logs)
+
+    os.unlink(quantized_onnx_path)
+
+    logs.add_message('INT8 engine built', {'num_calibration_images': len(image_paths)})
 
 
 # ---------------------------------------------------------------------------

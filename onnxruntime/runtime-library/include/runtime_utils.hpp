@@ -1,4 +1,3 @@
-
 #ifndef RUNTIME_UTILS_HPP
 #define RUNTIME_UTILS_HPP
 
@@ -10,22 +9,30 @@
 
 using namespace std;
 
-// Get output names from the ONNX Runtime session
 vector<char *> get_output_names(Ort::Session &session);
-
-// Map tensor_data_type to ONNX Runtime ONNXTensorElementDataType
-ONNXTensorElementDataType map_to_ort_type(tensor_data_type t);
-
-// Map ONNX Runtime ONNXTensorElementDataType to tensor_data_type
-tensor_data_type map_to_tensors_struct_type(ONNXTensorElementDataType type);
-
+ONNXTensorElementDataType map_to_ort_type(TensorElementType t);
+TensorElementType map_to_tensors_struct_type(ONNXTensorElementDataType type);
+int get_element_byte_size(TensorElementType t);
+void deep_free_tensors(Tensors *t);
+void free_queue(moodycamel::ConcurrentQueue<Tensors *> &queue);
 shared_ptr<spdlog::logger> initialize_logger(const string &log_file,
-                                             int file_level = spdlog::level::info,
-                                             int console_level = spdlog::level::info,
-                                             const string prefix = "OAAX");
+                                              int file_level,
+                                              int console_level,
+                                              const string &prefix,
+                                              bool log_stdout = false);
+void destroy_logger(const shared_ptr<spdlog::logger> &logger);
 
-void destroy_logger(std::shared_ptr<spdlog::logger> logger);
+struct HwProfile {
+    int cpu_cores;
+    int gpu_sm_count;
+    size_t gpu_total_mem;
+};
+HwProfile detect_hardware();
 
-void free_queue(moodycamel::ConcurrentQueue<tensors_struct *> &queue);
+// Windows: make this DLL's own directory visible to libraries that load
+// their components with plain LoadLibrary at runtime (cuDNN 9). No-op on
+// other platforms. Returns an empty string on success, or a fatal
+// configuration error message that runtime_init must report.
+string prepare_dll_search_path(spdlog::logger &log);
 
 #endif // RUNTIME_UTILS_HPP

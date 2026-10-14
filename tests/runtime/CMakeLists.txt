@@ -25,13 +25,13 @@ if(NOT DEFINED RUNTIME_INCLUDE_DIR)
     set(RUNTIME_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../tensorrt/runtime-library/include")
 endif()
 
-# tensors_struct.h is bundled in tests/runtime/include/
+# interface.h is bundled in tests/runtime/include/
 set(TESTS_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 message(STATUS "Runtime lib dir:     ${RUNTIME_LIB_DIR}")
 message(STATUS "Runtime include dir: ${RUNTIME_INCLUDE_DIR}")
 
-foreach(TEST_NAME simple_test inference_test)
+foreach(TEST_NAME simple_test inference_test robustness_test)
     add_executable(${TEST_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/${TEST_NAME}.cpp)
     target_include_directories(${TEST_NAME} PRIVATE
         ${RUNTIME_INCLUDE_DIR}

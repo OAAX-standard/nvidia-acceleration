@@ -5,19 +5,21 @@ Two-stage test pipeline covering both the TRT and ORT backends.
 ## Prerequisites
 
 ```bash
-uv sync --group dev   # installs pytest, ultralytics, onnx, torchvision
+uv sync --group dev   # installs pytest, onnx, torch, torchvision, numpy, pillow
 ```
+
+Test models: YOLOX (Apache-2.0, pinned + sha256-verified download) and torchvision MobileNetV2 (BSD-3). Set `OAAX_CALIB_DIR` to a folder of `.jpg` images for realistic INT8 calibration (default: synthetic images).
 
 Docker must be running. The TRT backend additionally requires `--gpus all` access.
 
-| Backend | Docker image env var | Default image |
+| Backend | Docker image env var | Default image (`<VERSION>` = repo `VERSION` file) |
 |---|---|---|
-| TRT | `NVIDIA_TRT_TOOLCHAIN_IMAGE` | `oaax-nvidia-tensorrt-toolchain:1.3.0` |
-| ORT | `NVIDIA_ORT_TOOLCHAIN_IMAGE` | `oaax-nvidia-toolchain:1.3.0` |
+| TRT | `NVIDIA_TRT_TOOLCHAIN_IMAGE` | `oaax-nvidia-tensorrt-toolchain:<VERSION>` |
+| ORT | `NVIDIA_ORT_TOOLCHAIN_IMAGE` | `oaax-nvidia-toolchain:<VERSION>` |
 
 Override the image with the env var if you have a different version locally, e.g.:
 ```bash
-export NVIDIA_ORT_TOOLCHAIN_IMAGE=oaax-nvidia-toolchain:1.2.0
+export NVIDIA_ORT_TOOLCHAIN_IMAGE=oaax-nvidia-toolchain:1.3.0
 ```
 
 ---
@@ -44,11 +46,11 @@ Converted models are cached — re-running stage1 skips models that already exis
 
 ## Stage 2 — Benchmarking
 
-Benchmarks compiled models using the OAAX runtime library. Requires stage1 to have run first.
+Benchmarks compiled models using the OAAX v2 runtime library. Requires stage1 to have run first.
 
 ```bash
 uv run python -m tests.stage2 --backend trt \
-  --runtime-lib tensorrt/runtime-library/build/NVIDIA_TENSORRT/x86_64/Ubuntu/22.04/library-cuda_12/bin/libRuntimeLibrary.so
+  --runtime-lib tensorrt/runtime-library/build/NVIDIA_TENSORRT/x86_64/Ubuntu/22.04/library-cuda_13/bin/libRuntimeLibrary.so
 
 uv run python -m tests.stage2 --backend ort \
   --runtime-lib onnxruntime/runtime-library/build/bin/libRuntimeLibrary.so
@@ -71,6 +73,37 @@ The `inference_test` binary is built automatically on first run from `tests/runt
 
 ---
 
+## Testing the ORT runtime on Windows
+
+Everything below runs directly on a Windows machine with an NVIDIA GPU and a matching
+CUDA Toolkit install — no Docker/Python required. Use an **x64 Native Tools Command
+Prompt for VS** (the plain Developer Command Prompt defaults to x86 and produces a
+32-bit exe that fails to load the DLL).
+
+```bat
+REM 1. Build the runtime DLLs (CUDA 11/12/13, all three by default)
+cd onnxruntime\runtime-library
+.\build-runtimes.bat
+REM DLLs land in build\bin\Release\ (last CUDA version built) and artifacts\Windows\cuda_<N>\
+
+REM 2. Run the no-GPU load/dependency diagnostic first
+cd ..\..\tests\runtime
+cl /W4 windows_load_test.c
+.\windows_load_test.exe ..\..\onnxruntime\runtime-library\artifacts\Windows\cuda_12\RuntimeLibrary.dll --init --cuda-version 12
+```
+
+`windows_load_test.c` checks PE bitness, that bundled MSVC/ORT DLLs resolve from the
+runtime's own folder, that the (unbundled) CUDA Toolkit DLLs resolve from PATH, CWD
+writability, all nine OAAX v2 exports, and an init/cleanup round-trip — see the file
+header for details.
+
+Always pass a model path to `robustness_test` (Linux: built by `tests/runtime/build-tests.sh`): without one, `model_states`/`output_names`
+stay empty for the whole run and its strongest check (load → cleanup → re-init → reload,
+covering the `get_output_names()` ORT-allocator/`free()` mismatch that crashed
+`mediaserver.exe`) never actually executes.
+
+---
+
 ## Running pytest directly
 
 ```bash
@@ -82,7 +115,7 @@ uv run pytest tests/ -k trt
 uv run pytest tests/ -k ort
 
 # Specific test class
-uv run pytest tests/test_yolo.py::TestModelConversion -k ort
+uv run pytest tests/test_yolox.py::TestModelConversion -k ort
 ```
 
 Tests that require a backend not available on the machine are automatically skipped.
