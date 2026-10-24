@@ -167,3 +167,11 @@ See [`onnxruntime/conversion-toolchain/README.md`](onnxruntime/conversion-toolch
 ```
 
 For a complete working example see [OAAX-standard/examples](https://github.com/OAAX-standard/examples).
+
+## Contributing
+
+Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). Every commit needs a DCO sign-off (`git commit -s`).
+
+## License
+
+Apache 2.0, see [LICENSE](LICENSE).
