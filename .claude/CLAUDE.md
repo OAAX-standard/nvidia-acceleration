@@ -31,7 +31,8 @@ nvidia-acceleration/
 │                                    # unpack-trt.sh, build-in-docker.sh
 ├── tests/                           # stage1 (conversion), stage2 (benchmark), runtime/ C++ tests (incl. Windows)
 ├── .github/workflows/               # build-{runtime,toolchain}.yml (TRT), build-onnxruntime-{runtime,toolchain}.yml (ORT),
-│                                    # delete-temporary-artifacts.yml (cleans S3 on PR close)
+│                                    # delete-temporary-artifacts.yml (cleans a PR's S3 keys on close, never a release-looking name),
+│                                    # ../actions/publish (upload step shared by the build jobs)
 └── VERSION                          # semver, read by build scripts and test image tags
 ```
 
@@ -106,7 +107,14 @@ Where `<arch>` is `x86_64`, `aarch64-jetson`, or `aarch64-sbsa`.
 ### CI Artifacts (S3)
 
 - Runtime: `s3://oaax/runtimes/<version>/NVIDIA_TRT/...` (TRT) and `.../NVIDIA_ORT/...` (ORT), same `<arch>/Ubuntu/<ubuntu_version>/` layout as the build output
-- Toolchain: `s3://oaax/conversion-toolchain/<version>/NVIDIA/oaax-nvidia-{tensorrt,onnxruntime}-toolchain.tar`
+- Toolchain: `s3://oaax/conversion-toolchain/<version>/NVIDIA/oaax-nvidia-{tensorrt,onnxruntime}-toolchain.tar` (+ the TRT conversion wheel)
+- Uploads go through `scripts/publish-artifacts.sh <release|branch|dry> <name> <set>`, called by `.github/actions/publish` at the end of each build job:
+  - `v*` tag (must equal `VERSION`, commit on `main`) = release: `<VERSION>/` is **write once** (refuses if any key exists) and `latest/` is copied from it
+  - pull request with secrets = `<branch>/`, overwritten each run, never `latest/`; names that look like a release (`latest`, leading digit, `v<digit>`) are refused
+  - `main` push, fork PR = dry run (files checked, keys printed, nothing uploaded)
+- Each set lists its expected files (the build matrix is repeated in the script): a missing or unlisted archive fails the job. Adding a build variant means adding it to the script.
+- The four build workflows run independently on a tag. If one fails midway through a release upload, its keys are partly in the bucket and the retry refuses: delete that set's partial `<VERSION>/` keys (maintainer, with a backup of the sha256 list) and re-run the job.
+- Release: bump `VERSION` and `CHANGELOG.md` on `main`, then push the tag `vX.Y.Z` on that commit. Update oaax-manager's `index.json` afterwards.
 
 ---
 

@@ -35,8 +35,12 @@ jobs:
           EOF
 
       - name: Delete runtimes and toolchain folders from S3
+        env:
+          HEAD_REF: ${{ github.head_ref }}
         run: |
-            version=${{ github.head_ref }}
+            version="$HEAD_REF"
+            # Never delete anything that could be a release (see scripts/publish-artifacts.sh)
+            if [[ "$version" =~ ^(latest|v?[0-9]) ]]; then echo "Not deleting '${version}': looks like a release"; exit 0; fi
             echo "Deleting artifacts for version: ${version}"
             s3cmd del --recursive "s3://oaax/runtimes/${version}/NVIDIA_TRT/" || echo "Warning: No TRT runtime found for version ${version}"
             s3cmd del --recursive "s3://oaax/runtimes/${version}/NVIDIA_ORT/" || echo "Warning: No ORT runtime found for version ${version}"

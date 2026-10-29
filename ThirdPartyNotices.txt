@@ -263,3 +263,8 @@ SOFTWARE.
 - onnxsim (ORT toolchain) — https://github.com/daquexian/onnx-simplifier — Apache License 2.0
 - onnxconverter-common (TRT toolchain, fp16) — https://github.com/microsoft/onnxconverter-common — MIT License
 - nvidia-modelopt (optional, TRT 11 int8) — https://github.com/NVIDIA/TensorRT-Model-Optimizer — Apache License 2.0
+- NVIDIA TensorRT container (TRT toolchain Docker image, base `nvcr.io/nvidia/tensorrt`) — contains TensorRT,
+  CUDA, cuDNN and Ubuntu packages, each under its own license; the NVIDIA components are governed by the
+  NVIDIA Deep Learning Container License (https://developer.download.nvidia.com/licenses/NVIDIA_Deep_Learning_Container_License.pdf)
+- Python 3.11 slim image (ORT toolchain Docker image, base `python:3.11-slim`) — Python Software Foundation
+  License and the Debian packages' own licenses

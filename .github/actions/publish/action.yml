@@ -1,0 +1,62 @@
+name: Publish to the OAAX bucket
+description: >-
+  Uploads the build outputs of one CI job (scripts/publish-artifacts.sh). A v* tag uploads the release (write once),
+  a pull request with secrets uploads to <branch>/ for testing, anything else is a dry run.
+
+inputs:
+  set:
+    description: Which build outputs to publish (see scripts/publish-artifacts.sh)
+    required: true
+  s3-access-key:
+    description: Empty on pull requests from forks, which then only get a dry run
+    required: false
+    default: ""
+  s3-secret-key:
+    required: false
+    default: ""
+  s3-endpoint-url:
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # A tag is a release only if it names the VERSION file and sits on main.
+    - name: Tag must match VERSION and be on main
+      if: startsWith(github.ref, 'refs/tags/v')
+      shell: bash
+      env:
+        TAG: ${{ github.ref_name }}
+      run: |
+        [ "${TAG#v}" = "$(cat VERSION)" ] || { echo "tag $TAG does not match VERSION $(cat VERSION)"; exit 1; }
+    - name: Tag commit must be on main
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea  # v7.0.1
+      with:
+        github-token: ${{ github.token }}
+        script: |
+          // behind or identical: the tagged commit is an ancestor of main (no git needed, the job containers have none)
+          const { data } = await github.rest.repos.compareCommitsWithBasehead({
+            owner: context.repo.owner, repo: context.repo.repo, basehead: `main...${context.sha}`,
+          });
+          if (!['behind', 'identical'].includes(data.status)) {
+            core.setFailed(`${context.ref} is not on main (${data.status}), tag a commit of main`);
+          }
+
+    - name: Upload
+      shell: bash
+      env:
+        SET: ${{ inputs.set }}
+        S3_ACCESS_KEY: ${{ inputs.s3-access-key }}
+        S3_SECRET_KEY: ${{ inputs.s3-secret-key }}
+        S3_ENDPOINT_URL: ${{ inputs.s3-endpoint-url }}
+      # The branch name reaches the script only through the environment (GITHUB_HEAD_REF), never through ${{ }}.
+      run: |
+        if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          mode=release name=$(cat VERSION)
+        elif [ "$GITHUB_EVENT_NAME" = pull_request ] && [ -n "$S3_ACCESS_KEY" ]; then
+          mode=branch name=$GITHUB_HEAD_REF
+        else
+          mode=dry name=$(cat VERSION)
+        fi
+        bash scripts/publish-artifacts.sh "$mode" "$name" "$SET"

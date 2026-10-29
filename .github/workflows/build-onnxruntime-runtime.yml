@@ -7,13 +7,16 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*"
   pull_request:
     branches:
       - main
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # never cancel a release upload half way
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
   build-runtimes:
@@ -44,15 +47,6 @@ jobs:
           mkdir -p .deps
           ln -fs ${{ vars.NVIDIA_DEPS_DIR }}/cudnn .deps/cudnn
 
-      - name: Determine version
-        run: |
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            version=$(cat VERSION)
-          else
-            version=${{ github.head_ref }}
-          fi
-          echo "version=$version" >> $GITHUB_ENV
-
       - name: Install cross-compilation toolchains
         shell: bash
         run: |
@@ -74,51 +68,13 @@ jobs:
       - name: Build all runtimes
         run: bash onnxruntime/runtime-library/build-runtimes.sh
 
-      - name: Configure s3cmd
-        run: |
-          cat > ~/.s3cfg <<EOF
-          [default]
-          access_key = ${{ secrets.S3_ACCESS_KEY }}
-          secret_key = ${{ secrets.S3_SECRET_KEY }}
-          bucket_location = us-east-1
-          host_base = ${{ secrets.S3_ENDPOINT_URL }}
-          host_bucket = %(bucket)s.${{ secrets.S3_ENDPOINT_URL }}
-          use_https = True
-          EOF
-
-      - name: Upload runtimes to S3
-        run: |
-          s3cmd_retry() {
-            local attempt
-            for attempt in 1 2 3; do
-              if s3cmd "$@"; then
-                return 0
-              fi
-              echo "s3cmd $1 failed (attempt $attempt/3), retrying..." >&2
-              sleep $((10 * attempt))
-            done
-            echo "s3cmd $* failed after 3 attempts" >&2
-            return 1
-          }
-
-          version=${{ env.version }}
-          for archive in onnxruntime/runtime-library/artifacts/runtime-library-*.tar.gz; do
-            # archive name: runtime-library-<PLATFORM>-cuda_<N>.tar.gz
-            name=$(basename "$archive" .tar.gz)          # runtime-library-X86_64-cuda_12
-            platform=$(echo "$name" | cut -d- -f3)            # X86_64
-            cuda=$(echo "$name" | cut -d- -f4 | cut -d_ -f2)  # 12
-            case "$platform" in
-              X86_64)       arch="x86_64" ;;
-              AARCH64)      arch="aarch64-jetson" ;;
-              AARCH64_SBSA) arch="aarch64-sbsa" ;;
-            esac
-            s3cmd_retry put "$archive" \
-              "s3://oaax/runtimes/${version}/NVIDIA_ORT/${arch}/Ubuntu/library-cuda_${cuda}.tar.gz" || exit 1
-          done
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            s3cmd_retry sync "s3://oaax/runtimes/${version}/NVIDIA_ORT/" \
-                       "s3://oaax/runtimes/latest/NVIDIA_ORT/" || exit 1
-          fi
+      - name: Publish to the OAAX bucket
+        uses: ./.github/actions/publish
+        with:
+          set: ort-runtime
+          s3-access-key: ${{ secrets.S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.S3_SECRET_KEY }}
+          s3-endpoint-url: ${{ secrets.S3_ENDPOINT_URL }}
 
   build-runtime-windows-x86_64:
     timeout-minutes: 60
@@ -143,60 +99,19 @@ jobs:
           cd onnxruntime\runtime-library
           .\build-runtimes.bat
 
-      - name: Determine version
-        id: version
-        shell: pwsh
+      # s3cmd from PyPI (uv, pinned); the Linux jobs install it with apt
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
+
+      - name: Install s3cmd
+        shell: bash
         run: |
-          if ("${{ github.ref }}" -eq "refs/heads/main") {
-            if (Test-Path VERSION) {
-              $version = Get-Content VERSION
-            } else {
-              throw "VERSION file missing"
-            }
-          } else {
-            $version = "${{ github.head_ref }}"
-          }
-          echo "version=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          uv tool install s3cmd==2.4.0
+          uv tool dir --bin >> "$GITHUB_PATH"
 
-      - name: Upload runtimes to S3
-        shell: pwsh
-        run: |
-          $version = $env:version
-          $localFolder = "onnxruntime\runtime-library\artifacts"
-
-          $s5cmdUrl = "https://github.com/peak/s5cmd/releases/download/v2.3.0/s5cmd_2.3.0_Windows-64bit.zip"
-          $s5cmdZip = "$env:USERPROFILE\s5cmd.zip"
-          $s5cmdPath = "$env:USERPROFILE\s5cmd"
-          Invoke-WebRequest -Uri $s5cmdUrl -OutFile $s5cmdZip
-          Expand-Archive -Path $s5cmdZip -DestinationPath $s5cmdPath -Force
-          Remove-Item -Path $s5cmdZip
-          $env:PATH += ";$s5cmdPath"
-
-          $env:AWS_ACCESS_KEY_ID = "${{ secrets.S3_ACCESS_KEY }}"
-          $env:AWS_SECRET_ACCESS_KEY = "${{ secrets.S3_SECRET_KEY }}"
-
-          function Invoke-S5cmdRetry {
-            param([string[]]$CmdArgs)
-            for ($attempt = 1; $attempt -le 3; $attempt++) {
-              s5cmd --endpoint-url "https://${{ secrets.S3_ENDPOINT_URL }}" @CmdArgs
-              if ($LASTEXITCODE -eq 0) { return }
-              Write-Warning "s5cmd $($CmdArgs[0]) failed (attempt $attempt/3, exit $LASTEXITCODE), retrying..."
-              Start-Sleep -Seconds (10 * $attempt)
-            }
-            throw "s5cmd failed after 3 attempts: $($CmdArgs -join ' ')"
-          }
-
-          foreach ($cuda in @("11", "12", "13")) {
-            Invoke-S5cmdRetry -CmdArgs @(
-              "cp",
-              "$localFolder\runtime-library-X86_64-Windows-cuda_$cuda.tar.gz",
-              "s3://oaax/runtimes/$version/NVIDIA_ORT/x86_64/Windows/library-cuda_$cuda.tar.gz"
-            )
-          }
-          if ("${{ github.ref }}" -eq "refs/heads/main") {
-            Invoke-S5cmdRetry -CmdArgs @(
-              "sync",
-              "s3://oaax/runtimes/$version/NVIDIA_ORT/",
-              "s3://oaax/runtimes/latest/NVIDIA_ORT/"
-            )
-          }
+      - name: Publish to the OAAX bucket
+        uses: ./.github/actions/publish
+        with:
+          set: ort-runtime-windows
+          s3-access-key: ${{ secrets.S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.S3_SECRET_KEY }}
+          s3-endpoint-url: ${{ secrets.S3_ENDPOINT_URL }}

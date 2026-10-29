@@ -6,13 +6,16 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*"
   pull_request:
     branches:
       - main
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # never cancel a release upload half way
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
   build-runtimes:
@@ -42,40 +45,14 @@ jobs:
       - name: Install env deps
         run: bash scripts/setup-env.sh
 
-      - name: Determine version
-        run: |
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            version=$(cat VERSION)
-          else
-            version=${{ github.head_ref }}
-          fi
-          echo "version=$version" >> $GITHUB_ENV
-
       - name: Build all runtimes
         run: |
           bash tensorrt/runtime-library/build-runtimes.sh
 
-      - name: Configure s3cmd
-        run: |
-          cat > ~/.s3cfg <<EOF
-          [default]
-          access_key = ${{ secrets.S3_ACCESS_KEY }}
-          secret_key = ${{ secrets.S3_SECRET_KEY }}
-          bucket_location = us-east-1
-          host_base = ${{ secrets.S3_ENDPOINT_URL }}
-          host_bucket = %(bucket)s.${{ secrets.S3_ENDPOINT_URL }}
-          use_https = True
-          EOF
-
-      - name: Upload runtimes to S3
-        run: |
-          version=${{ env.version }}
-          find tensorrt/runtime-library/build/NVIDIA_TENSORRT -name "library-trt*-cuda_*.tar.gz" | while read -r archive; do
-            # archive path: tensorrt/runtime-library/build/NVIDIA_TENSORRT/<arch>/Ubuntu/<ubuntu_version>/library-trt<N>-cuda_<M>.tar.gz
-            rel="${archive#tensorrt/runtime-library/build/NVIDIA_TENSORRT/}"
-            s3cmd put "$archive" "s3://oaax/runtimes/${version}/NVIDIA_TRT/${rel}"
-          done
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            s3cmd sync "s3://oaax/runtimes/${version}/NVIDIA_TRT/" \
-                       "s3://oaax/runtimes/latest/NVIDIA_TRT/"
-          fi
+      - name: Publish to the OAAX bucket
+        uses: ./.github/actions/publish
+        with:
+          set: trt-runtime
+          s3-access-key: ${{ secrets.S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.S3_SECRET_KEY }}
+          s3-endpoint-url: ${{ secrets.S3_ENDPOINT_URL }}
