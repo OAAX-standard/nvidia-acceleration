@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Versions are listed new
 
 ---
 
-## 2.0.0 — 2026-10-13
+## 2.0.0 — 2026-10-30
 
 ### Changed
 - Native TensorRT backend (`tensorrt/`): engines are compiled ahead of time by the conversion toolchain on the deployment GPU, and the runtime loads `.trt` files directly (no ONNX Runtime); adds DGX Spark / Grace (`AARCH64_SBSA`) support. The ONNX Runtime backend (`onnxruntime/`) remains alongside it
@@ -13,6 +13,7 @@ All notable changes to this project are documented here. Versions are listed new
 - ORT runtime exports only the OAAX v2 API (linker version script / `.def` file); ORT-internal symbols no longer leak into the host process
 - Test suite uses Apache-2.0 YOLOX models (`yolox_nano`, `yolox_tiny`, `yolox_s`) and MobileNetV2 instead of Ultralytics YOLOv8/YOLO11 (AGPL-3.0); INT8 calibration uses synthetic images unless `OAAX_CALIB_DIR` points to real ones
 - Test toolchain image tags follow the repo `VERSION` file
+- Release process: a release is uploaded to the bucket only when a `vX.Y.Z` tag (matching `VERSION`, on `main`) is pushed, and keys under `<VERSION>/` are written once and never overwritten. Pull requests still upload to `<branch>/` for testing; pushes to `main` upload nothing. Uploads moved out of the build jobs into `scripts/publish-artifacts.sh`, the Windows runtime upload now uses `s3cmd` instead of `s5cmd`
 
 ### Added
 - TensorRT 11 support in the TRT conversion toolchain and runtime build matrix (TRT 10 and 11 packages)
