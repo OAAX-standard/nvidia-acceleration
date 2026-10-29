@@ -112,6 +112,7 @@ Where `<arch>` is `x86_64`, `aarch64-jetson`, or `aarch64-sbsa`.
   - `v*` tag (must equal `VERSION`, commit on `main`) = release: `<VERSION>/` is **write once** (refuses if any key exists) and `latest/` is copied from it
   - pull request with secrets = `<branch>/`, overwritten each run, never `latest/`; names that look like a release (`latest`, leading digit, `v<digit>`) are refused
   - `main` push, fork PR = dry run (files checked, keys printed, nothing uploaded)
+- The Windows ORT runtime is built on a GitHub-hosted runner and handed to a Linux job (`publish-runtime-windows-x86_64`) as an Actions artifact: `s3cmd` on the Windows runner did not finish the ~3 GB upload within the 60 min job timeout.
 - Each set lists its expected files (the build matrix is repeated in the script): a missing or unlisted archive fails the job. Adding a build variant means adding it to the script.
 - The four build workflows run independently on a tag. If one fails midway through a release upload, its keys are partly in the bucket and the retry refuses: delete that set's partial `<VERSION>/` keys (maintainer, with a backup of the sha256 list) and re-run the job.
 - Release: bump `VERSION` and `CHANGELOG.md` on `main`, then push the tag `vX.Y.Z` on that commit. Update oaax-manager's `index.json` afterwards.
