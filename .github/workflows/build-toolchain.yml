@@ -20,7 +20,7 @@ concurrency:
 jobs:
   build-toolchain:
     timeout-minutes: 20
-    runs-on: hetzner-runner
+    runs-on: ubuntu-22.04
     container:
       image: ubuntu:22.04
       options: --volume /var/run/docker.sock:/var/run/docker.sock
@@ -50,7 +50,7 @@ jobs:
 
   build-wheel:
     timeout-minutes: 10
-    runs-on: hetzner-runner
+    runs-on: ubuntu-22.04
     container:
       image: ubuntu:22.04
 
