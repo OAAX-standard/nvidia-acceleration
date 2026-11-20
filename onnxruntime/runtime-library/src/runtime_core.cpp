@@ -273,7 +273,10 @@ extern "C" RuntimeStatus runtime_init(Config config)
             if (!known.count(k)) logger->warn("Unknown config key ignored: '{}'", k);
 
         logger->debug("runtime_init: creating Ort::Env");
-        env = make_unique<Ort::Env>(ORT_LOGGING_LEVEL_WARNING, runtime_get_name());
+        // ERROR, not WARNING: ORT's default logger writes to stderr (syslog under the
+        // Mediaserver), bypassing log_level. At WARNING, VerifyOutputSizes fires on almost
+        // every frame when a model has fewer detections than its declared max (AIMP-1596).
+        env = make_unique<Ort::Env>(ORT_LOGGING_LEVEL_ERROR, runtime_get_name());
         logger->debug("runtime_init: creating Ort::SessionOptions (num_threads={}, inter_op_threads={})",
                       num_threads, inter_op_threads);
         session_options = make_unique<Ort::SessionOptions>();

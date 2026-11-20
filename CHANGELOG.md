@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Versions are listed new
 
 ---
 
+## 2.0.1 — 2026-11-20
+
+### Fixed
+- ORT runtime: ONNX Runtime logger lowered from WARNING to ERROR. Its default logger writes to stderr (syslog under the Nx Mediaserver) regardless of `log_level`, and `VerifyOutputSizes` warned on almost every frame for models with fewer detections than their declared maximum, filling the disk (AIMP-1596)
+
 ## 2.0.0 — 2026-10-30
 
 ### Changed

@@ -20,11 +20,9 @@ concurrency:
 jobs:
   build-runtimes:
     timeout-minutes: 120
-    runs-on: hetzner-runner
+    runs-on: ubuntu-22.04
     container:
       image: ubuntu:22.04
-      options: >-
-        --volume ${{ vars.NVIDIA_DEPS_DIR }}:${{ vars.NVIDIA_DEPS_DIR }}
 
     steps:
       - name: Set up environment
@@ -38,9 +36,6 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 1
-
-      - name: Link pre-cached deps
-        run: ln -fs ${{ vars.NVIDIA_DEPS_DIR }} .deps
 
       - name: Install env deps
         run: bash scripts/setup-env.sh
