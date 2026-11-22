@@ -125,8 +125,23 @@ if [ "$mode" = release ]; then
   done
 fi
 
+# Big uploads use s5cmd when it is installed: it sends the parts in parallel, which is much faster than s3cmd's
+# single stream over the long link to the bucket (~3 GB Windows runtime). Everything else stays on s3cmd.
+put() {
+  command -v s5cmd >/dev/null || { s3_retry put "$1" "$2"; return; }
+  local attempt
+  for attempt in 1 2 3; do
+    AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY" \
+      s5cmd --endpoint-url "https://$S3_ENDPOINT_URL" cp "$1" "$2" && return 0
+    echo "s5cmd cp failed (attempt $attempt/3), retrying..." >&2
+    sleep $((10 * attempt))
+  done
+  echo "s5cmd cp $1 $2 failed after 3 attempts" >&2
+  return 1
+}
+
 for f in "${!files[@]}"; do
-  s3_retry put "$f" "s3://oaax/${files[$f]//@/$name}"
+  put "$f" "s3://oaax/${files[$f]//@/$name}"
 done
 if [ "$mode" = release ]; then
   # server-side copy, after every versioned key is in place, so latest/ never points to a partial release
