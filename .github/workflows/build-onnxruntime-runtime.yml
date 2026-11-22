@@ -112,7 +112,7 @@ jobs:
 
   publish-runtime-windows-x86_64:
     name: Publish the Windows runtime
-    timeout-minutes: 30
+    timeout-minutes: 60
     needs: build-runtime-windows-x86_64
     runs-on: hetzner-runner
     container:
@@ -123,7 +123,7 @@ jobs:
         run: |
           export DEBIAN_FRONTEND=noninteractive
           apt-get update -y
-          apt-get install -y s3cmd
+          apt-get install -y s3cmd ca-certificates
 
       - name: Checkout
         uses: actions/checkout@v3
